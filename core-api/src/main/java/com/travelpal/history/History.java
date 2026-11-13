@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Service
 public class History {
-    public static final Set<String> UNDOABLE = Set.of("DESTINATION_ADDED", "DESTINATION_UPDATED", "DESTINATION_REMOVED", "DAY_REORDERED");
+    public static final Set<String> UNDOABLE = Set.of("DESTINATION_ADDED", "DESTINATION_UPDATED", "DESTINATION_REMOVED", "DAY_REORDERED", "PLAN_APPLIED");
 
     public record Changed(UUID tripId, UUID actorId) {}
     public record Entry(long id, UUID actorId, String actorName, String type, String summary, Instant createdAt,

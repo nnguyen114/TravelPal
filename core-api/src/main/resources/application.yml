@@ -24,4 +24,13 @@ travelpal:
     access-ttl: 15m
     refresh-ttl: 30d
   cookie-secure: ${COOKIE_SECURE:true}
+  # Private EC P-256 JWK (JSON) for core-api -> ai-service tokens. Unset = new key per process (dev only).
+  internal-jwk: ${INTERNAL_JWT_PRIVATE_JWK:}
   places-url: ${PLACES_URL:https://photon.komoot.io}
+  ai:
+    service-url: ${AI_SERVICE_URL:http://localhost:8090}
+    # LocalStack locally; set SQS_ENDPOINT empty in AWS to use the real endpoint and IAM role credentials.
+    sqs-endpoint: ${SQS_ENDPOINT:http://localhost:4566}
+    region: ${AWS_REGION:us-east-1}
+    jobs-queue: ${OPTIMIZE_JOBS_QUEUE:optimize-jobs}
+    results-queue: ${OPTIMIZE_RESULTS_QUEUE:optimize-results}

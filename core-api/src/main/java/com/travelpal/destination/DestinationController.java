@@ -30,18 +30,22 @@ public class DestinationController {
                                      @Min(-90) @Max(90) Double lat, @Min(-180) @Max(180) Double lng,
                                      @Size(max = 120) String providerId, @Size(max = 2000) String notes,
                                      @Min(5) @Max(1440) Integer durationMin, Integer dayIndex, LocalTime startTime,
-                                     boolean locked, Flexibility flexibility, Long version) {
+                                     boolean locked, Flexibility flexibility, Long version,
+                                     LocalTime visitAfter, LocalTime visitBefore, boolean dayTrip) {
         DestinationService.Input input() {
-            return new DestinationService.Input(name, address, lat, lng, providerId, notes, durationMin, dayIndex, startTime, locked, flexibility);
+            return new DestinationService.Input(name, address, lat, lng, providerId, notes, durationMin, dayIndex, startTime, locked, flexibility,
+                visitAfter, visitBefore, dayTrip);
         }
     }
     public record ReorderRequest(@NotNull @Size(max = 200) List<UUID> ids) {}
     public record DestinationDto(UUID id, String name, String address, Double lat, Double lng, String providerId, String notes,
                                  Integer durationMin, Integer dayIndex, Integer position, LocalTime startTime, boolean locked,
-                                 Flexibility flexibility, long version) {
+                                 Flexibility flexibility, long version, LocalTime visitAfter, LocalTime visitBefore, boolean dayTrip,
+                                 String hintsSource) {
         static DestinationDto of(Destination d) {
             return new DestinationDto(d.getId(), d.getName(), d.getAddress(), d.getLat(), d.getLng(), d.getProviderId(), d.getNotes(),
-                d.getDurationMin(), d.getDayIndex(), d.getPosition(), d.getStartTime(), d.isLocked(), d.getFlexibility(), d.getVersion());
+                d.getDurationMin(), d.getDayIndex(), d.getPosition(), d.getStartTime(), d.isLocked(), d.getFlexibility(), d.getVersion(),
+                d.getVisitAfter(), d.getVisitBefore(), d.isDayTrip(), d.getHintsSource());
         }
     }
 

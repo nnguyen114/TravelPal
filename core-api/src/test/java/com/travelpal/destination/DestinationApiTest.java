@@ -67,6 +67,19 @@ class DestinationApiTest extends IntegrationTest {
     }
 
     @Test
+    void travelersCanSetBestTimesAndDayTrips() throws Exception {
+        String id = read(mvc.perform(json(post(base + "/destinations"), who,
+                "{\"name\":\"Golden Gai\",\"visitAfter\":\"20:00\",\"visitBefore\":\"23:30\"}"))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.hintsSource").value("USER"))
+            .andExpect(jsonPath("$.visitBefore").value("23:30:00")).andReturn(), "$.id");
+        mvc.perform(json(put(base + "/destinations/" + id), who, "{\"name\":\"Golden Gai\",\"dayTrip\":true,\"version\":0}"))
+            .andExpect(jsonPath("$.dayTrip").value(true)).andExpect(jsonPath("$.visitAfter").doesNotExist());
+        mvc.perform(json(post(base + "/destinations"), who, "{\"name\":\"Plain\"}")).andExpect(jsonPath("$.hintsSource").doesNotExist());
+        mvc.perform(json(post(base + "/destinations"), who, "{\"name\":\"Bad\",\"visitAfter\":\"20:00\",\"visitBefore\":\"10:00\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void dayOutsideTripAndBadInputRejected() throws Exception {
         mvc.perform(json(post(base + "/destinations"), who, "{\"name\":\"X\",\"dayIndex\":3}")).andExpect(status().isBadRequest());
         mvc.perform(json(post(base + "/destinations"), who, "{\"name\":\"X\",\"dayIndex\":-1}")).andExpect(status().isBadRequest());

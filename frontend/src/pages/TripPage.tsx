@@ -5,8 +5,11 @@ import { api } from '../api'
 import { AddDestinationDialog, EditDestinationDialog, InviteDialog } from '../dialogs'
 import { LinkIcon, LockIcon, Logo, PlusIcon } from '../icons'
 import { useTripLive } from '../live'
-import { byDay, canEdit, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, toInput } from '../trip'
-import type { Destination, Trip } from '../types'
+import { AskAiButton, AssistantDrawer } from '../assistant'
+import { PaceSwitch, useOptimize } from '../optimize'
+import { SparkleIcon } from '../icons'
+import { bestTime, byDay, canEdit, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, toInput } from '../trip'
+import type { Destination, Mode, Trip } from '../types'
 import { ActivityTab, MembersTab } from './CollabTabs'
 
 type Tab = 'main' | 'destinations' | 'members' | 'activity'
@@ -67,9 +70,9 @@ function useReorder(trip: Trip) {
   })
 }
 
-function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEdit }: {
+function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEdit, onOptimize }: {
   trip: Trip; index: number; stops: Destination[]; active: boolean; selectedId: string | null
-  onSelect: (id: string) => void; onAdd: () => void; onEdit: (d: Destination) => void
+  onSelect: (id: string) => void; onAdd: () => void; onEdit: (d: Destination) => void; onOptimize: () => void
 }) {
   const date = dayDate(trip, index)
   const color = dayColor(index)
@@ -101,7 +104,7 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
             <button className="stop-main" onClick={() => onSelect(s.id)} onDoubleClick={() => onEdit(s)}>
               <span style={{ display: 'block', fontSize: 15, fontWeight: 700 }}>{s.name}</span>
               <span className="muted" style={{ display: 'block', fontSize: 13, marginTop: 2 }}>
-                {[s.address?.split(',')[0], s.durationMin && `about ${formatDuration(s.durationMin)}`].filter(Boolean).join(' · ')}
+                {[s.address?.split(',')[0], s.durationMin && `about ${formatDuration(s.durationMin)}`, bestTime(s)].filter(Boolean).join(' · ')}
               </span>
             </button>
             <span className="stop-actions">
@@ -120,6 +123,7 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
       {editable && (
         <div className="row" style={{ marginTop: 14, gap: 8 }}>
           <button className="btn btn-soft" onClick={onAdd}>+ Add</button>
+          {stops.length > 1 && <button className="btn btn-soft" onClick={onOptimize}>Optimize Day</button>}
         </div>
       )}
     </article>
@@ -128,6 +132,8 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
 
 function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destination[] }) {
   const days = useMemo(() => byDay(trip, destinations), [trip, destinations])
+  const [mode, setMode] = useState<Mode>('BALANCED')
+  const optimize = useOptimize(trip.id)
   const unscheduled = destinations.filter((d) => d.dayIndex === null).length
   const [activeDay, setActiveDay] = useState<number | null>(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -156,9 +162,18 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
     <main className="workspace">
       <section ref={list} aria-label="Itinerary" className="itinerary">
         <div className="spread">
-          <span className="muted" style={{ fontSize: 14, fontWeight: 600 }}>{trip.dayCount} days · {destinations.length} places</span>
-          {canEdit(trip) && <button className="btn" onClick={() => setAdding(activeDay)}><PlusIcon /> Add Destination</button>}
+          {canEdit(trip)
+            ? <PaceSwitch value={mode} onChange={setMode} />
+            : <span className="muted" style={{ fontSize: 14, fontWeight: 600 }}>{trip.dayCount} days · {destinations.length} places</span>}
+          {canEdit(trip) && (
+            <div className="row" style={{ gap: 10 }}>
+              <button className="btn" onClick={() => setAdding(activeDay)}><PlusIcon /> Add Destination</button>
+              <button className="btn btn-primary" disabled={optimize.isPending || destinations.length === 0}
+                onClick={() => optimize.mutate({ mode, scope: 'TRIP' })}><SparkleIcon /> Optimize Trip</button>
+            </div>
+          )}
         </div>
+        {optimize.error && <div role="alert" className="error">{optimize.error.message}</div>}
         {destinations.length === 0 && (
           <div className="card" style={{ padding: 22 }}>
             <h2 style={{ fontSize: 18, fontWeight: 800 }}>Start with the places you want to go</h2>
@@ -167,7 +182,8 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
         )}
         {days.map((stops, i) => (
           <DayCard key={i} trip={trip} index={i} stops={stops} active={activeDay === i} selectedId={selectedId}
-            onSelect={(id) => { setSelectedId(id); setActiveDay(i) }} onAdd={() => setAdding(i)} onEdit={setEditing} />
+            onSelect={(id) => { setSelectedId(id); setActiveDay(i) }} onAdd={() => setAdding(i)} onEdit={setEditing}
+            onOptimize={() => optimize.mutate({ mode, scope: 'DAY', dayIndex: i })} />
         ))}
         {unscheduled > 0 && (
           <div className="spread" style={{ background: 'var(--accent-soft)', borderRadius: 20, padding: '18px 22px' }}>
@@ -242,7 +258,8 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
             <button className="stop-main" onClick={() => setEditing(d)}>
               <span style={{ display: 'block', fontWeight: 700 }}>{d.name}</span>
               <span className="muted" style={{ display: 'block', fontSize: 13 }}>
-                {d.dayIndex === null ? 'Unscheduled' : `Day ${d.dayIndex + 1} · ${formatDay(dayDate(trip, d.dayIndex))}${d.startTime ? ` · ${d.startTime.slice(0, 5)}` : ''}`}
+                {[d.dayIndex === null ? 'Unscheduled' : `Day ${d.dayIndex + 1} · ${formatDay(dayDate(trip, d.dayIndex))}${d.startTime ? ` · ${d.startTime.slice(0, 5)}` : ''}`,
+                  bestTime(d)].filter(Boolean).join(' · ')}
               </span>
             </button>
             {d.dayIndex === null && canEdit(trip) && (
@@ -266,6 +283,7 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
 
 export function TripPage({ tab }: { tab: Tab }) {
   const { tripId } = useParams()
+  const [askOpen, setAskOpen] = useState(false)
   useTripLive(tripId)
   const trip = useQuery({ queryKey: ['trip', tripId], queryFn: () => api<Trip>(`/api/trips/${tripId}`) })
   const destinations = useQuery({ queryKey: ['destinations', tripId], queryFn: () => api<Destination[]>(`/api/trips/${tripId}/destinations`) })
@@ -286,6 +304,7 @@ export function TripPage({ tab }: { tab: Tab }) {
       {tab === 'destinations' && <DestinationsTab trip={trip.data} destinations={destinations.data} />}
       {tab === 'members' && <MembersTab trip={trip.data} />}
       {tab === 'activity' && <ActivityTab trip={trip.data} />}
+      {askOpen ? <AssistantDrawer trip={trip.data} onClose={() => setAskOpen(false)} /> : <AskAiButton onClick={() => setAskOpen(true)} />}
     </>
   )
 }

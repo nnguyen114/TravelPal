@@ -15,6 +15,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.function.Consumer;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.localstack.LocalStackContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @SpringBootTest
@@ -23,8 +31,42 @@ public abstract class IntegrationTest {
     @ServiceConnection
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17-alpine");
 
+    protected static final LocalStackContainer LOCALSTACK = new LocalStackContainer("localstack/localstack:4.9").withServices("sqs");
+
+    /** Stand-in for ai-service's HTTP API; tests swap the handler. */
+    protected static volatile Consumer<HttpExchange> aiHandler = ex -> respond(ex, 500, "");
+    static final HttpServer FAKE_AI;
+
     static {
         POSTGRES.start();
+        LOCALSTACK.start();
+        try {
+            FAKE_AI = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+        FAKE_AI.createContext("/", ex -> aiHandler.accept(ex));
+        FAKE_AI.start();
+    }
+
+    @DynamicPropertySource
+    static void aiProps(DynamicPropertyRegistry r) {
+        r.add("travelpal.ai.sqs-endpoint", () -> LOCALSTACK.getEndpoint().toString());
+        r.add("travelpal.ai.region", LOCALSTACK::getRegion);
+        r.add("travelpal.ai.service-url", () -> "http://127.0.0.1:" + FAKE_AI.getAddress().getPort());
+    }
+
+    protected static void respond(HttpExchange ex, int status, String body) {
+        try (ex) {
+            byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            ex.getResponseHeaders().add("Content-Type", "text/event-stream");
+            ex.sendResponseHeaders(status, bytes.length == 0 ? -1 : bytes.length);
+            if (bytes.length > 0) {
+                ex.getResponseBody().write(bytes);
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @Autowired

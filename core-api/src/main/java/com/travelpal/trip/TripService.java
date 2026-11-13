@@ -171,6 +171,20 @@ public class TripService {
         return members.membersOf(tripId).stream().filter(r -> r[0].equals(memberId)).map(r -> (String) r[1]).findFirst().orElse("a member");
     }
 
+    public long version(UUID tripId) {
+        return load(tripId).getVersion();
+    }
+
+    /** Bumps the version only if it still equals {@code expected}; otherwise someone changed the trip: 409. */
+    @Transactional
+    public void claimVersion(UUID tripId, long expected) {
+        int n = em.createQuery("update Trip t set t.version = t.version + 1 where t.id = ?1 and t.version = ?2")
+            .setParameter(1, tripId).setParameter(2, expected).executeUpdate();
+        if (n == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The trip changed since this preview was made. Run it again to include the latest edits.");
+        }
+    }
+
     public int dayCount(UUID tripId) {
         return load(tripId).dayCount();
     }

@@ -21,19 +21,24 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class DestinationService {
     public record Input(String name, String address, Double lat, Double lng, String providerId, String notes,
-                        Integer durationMin, Integer dayIndex, LocalTime startTime, boolean locked, Flexibility flexibility) {}
+                        Integer durationMin, Integer dayIndex, LocalTime startTime, boolean locked, Flexibility flexibility,
+                        LocalTime visitAfter, LocalTime visitBefore, boolean dayTrip) {}
+
+    public record Hint(UUID id, LocalTime visitAfter, LocalTime visitBefore, boolean dayTrip) {}
 
     /** Full state of a destination at one moment; stored in the activity log for undo. */
     public record Snapshot(UUID id, String name, String address, Double lat, Double lng, String providerId, String notes,
                            Integer durationMin, Integer dayIndex, LocalTime startTime, boolean locked, Flexibility flexibility,
-                           long version) {
+                           long version, LocalTime visitAfter, LocalTime visitBefore, boolean dayTrip) {
         static Snapshot of(Destination d) {
             return new Snapshot(d.getId(), d.getName(), d.getAddress(), d.getLat(), d.getLng(), d.getProviderId(), d.getNotes(),
-                d.getDurationMin(), d.getDayIndex(), d.getStartTime(), d.isLocked(), d.getFlexibility(), d.getVersion());
+                d.getDurationMin(), d.getDayIndex(), d.getStartTime(), d.isLocked(), d.getFlexibility(), d.getVersion(),
+                d.getVisitAfter(), d.getVisitBefore(), d.isDayTrip());
         }
 
         Input input() {
-            return new Input(name, address, lat, lng, providerId, notes, durationMin, dayIndex, startTime, locked, flexibility);
+            return new Input(name, address, lat, lng, providerId, notes, durationMin, dayIndex, startTime, locked, flexibility,
+                visitAfter, visitBefore, dayTrip);
         }
     }
 
@@ -105,6 +110,47 @@ public class DestinationService {
 
     record DayOrder(int dayIndex, List<UUID> ids) {}
 
+    public record PlanItem(UUID id, Integer dayIndex, Integer position, LocalTime startTime) {}
+
+    record Placement(UUID id, Integer dayIndex, Integer position, LocalTime startTime, long version) {
+        static Placement of(Destination d) {
+            return new Placement(d.getId(), d.getDayIndex(), d.getPosition(), d.getStartTime(), d.getVersion());
+        }
+    }
+
+    record PlanState(List<Placement> placements) {}
+
+    /** Applies a reviewed optimizer plan. Locked and fixed plans are never touched, whatever the plan says. */
+    @Transactional
+    public void applyPlan(UUID userId, UUID tripId, List<PlanItem> items, String summary) {
+        access.require(tripId, userId, TripRole.EDITOR);
+        Map<UUID, Destination> all = repo.findByTrip(tripId).stream().collect(Collectors.toMap(Destination::getId, Function.identity()));
+        int days = trips.dayCount(tripId);
+        List<Placement> before = new java.util.ArrayList<>();
+        List<Destination> changed = new java.util.ArrayList<>();
+        for (PlanItem i : items) {
+            Destination d = all.get(i.id());
+            if (d == null || (i.dayIndex() != null && (i.dayIndex() < 0 || i.dayIndex() >= days))) {
+                continue;
+            }
+            boolean pinned = d.isLocked() || d.getFlexibility() == Flexibility.FIXED;
+            // A pinned plan keeps its day and time; it may only shift position as stops are ordered around it.
+            if (pinned && (i.dayIndex() == null || !i.dayIndex().equals(d.getDayIndex()) || !Objects.equals(i.startTime(), d.getStartTime()))) {
+                continue;
+            }
+            if (Objects.equals(d.getDayIndex(), i.dayIndex()) && Objects.equals(d.getPosition(), i.position())
+                && Objects.equals(d.getStartTime(), i.startTime())) {
+                continue;
+            }
+            before.add(Placement.of(d));
+            d.scheduleAt(i.dayIndex(), i.dayIndex() == null ? null : i.position(), i.startTime());
+            changed.add(d);
+        }
+        repo.flush();
+        history.record(tripId, userId, "PLAN_APPLIED", summary, new PlanState(before),
+            new PlanState(changed.stream().map(Placement::of).toList()));
+    }
+
     /** Reverses one logged change, refusing if the item changed again since (so nobody's later edit is lost). */
     @Transactional
     public void undo(UUID userId, UUID tripId, long eventId) {
@@ -127,6 +173,19 @@ public class DestinationService {
                 Destination d = new Destination(before.id(), tripId, userId, before.providerId());
                 apply(d, before.input());
                 repo.save(d);
+            }
+            case "PLAN_APPLIED" -> {
+                List<Placement> after = history.read(e.getAfter(), PlanState.class).placements();
+                Map<UUID, Destination> now = repo.findByTrip(tripId).stream().collect(Collectors.toMap(Destination::getId, Function.identity()));
+                for (Placement p : after) {
+                    Destination d = now.get(p.id());
+                    if (d == null || d.getVersion() != p.version()) {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT, "Places changed since; undo would overwrite newer edits");
+                    }
+                }
+                for (Placement p : history.read(e.getBefore(), PlanState.class).placements()) {
+                    now.get(p.id()).scheduleAt(p.dayIndex(), p.position(), p.startTime());
+                }
             }
             default -> { // DAY_REORDERED
                 DayOrder before = history.read(e.getBefore(), DayOrder.class);
@@ -178,6 +237,16 @@ public class DestinationService {
             d.schedule(day, repo.maxPosition(d.getTripId(), day) + 1);
         }
         d.details(in.name(), in.address(), in.lat(), in.lng(), in.notes(), in.durationMin(), in.startTime(), in.locked(), in.flexibility());
+        if (in.visitAfter() != null && in.visitBefore() != null && !in.visitAfter().isBefore(in.visitBefore())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Best-time window must start before it ends");
+        }
+        d.hints(in.visitAfter(), in.visitBefore(), in.dayTrip());
+    }
+
+    /** Stores the optimizer's suggestions; never overwrites what a traveler set. */
+    @Transactional
+    public void suggestHints(UUID tripId, List<Hint> hints) {
+        hints.forEach(h -> repo.suggestHints(tripId, h.id(), h.visitAfter(), h.visitBefore(), h.dayTrip()));
     }
 
     private static String describeUpdate(Snapshot before, Destination d) {
