@@ -39,3 +39,6 @@ test-results/
 
 # Maven
 target/
+
+# Local agent/editor config
+.claude/

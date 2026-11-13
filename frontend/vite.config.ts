@@ -5,6 +5,8 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: { proxy: { '/api': 'http://localhost:8081' } },
+  // Pre-bundling breaks MapLibre's inline web worker in dev.
+  optimizeDeps: { exclude: ['maplibre-gl'] },
   test: {
     environment: 'jsdom',
     setupFiles: ['src/test-setup.ts'],
