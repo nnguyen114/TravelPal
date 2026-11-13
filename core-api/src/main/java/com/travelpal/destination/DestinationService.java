@@ -105,6 +105,47 @@ public class DestinationService {
 
     record DayOrder(int dayIndex, List<UUID> ids) {}
 
+    public record PlanItem(UUID id, Integer dayIndex, Integer position, LocalTime startTime) {}
+
+    record Placement(UUID id, Integer dayIndex, Integer position, LocalTime startTime, long version) {
+        static Placement of(Destination d) {
+            return new Placement(d.getId(), d.getDayIndex(), d.getPosition(), d.getStartTime(), d.getVersion());
+        }
+    }
+
+    record PlanState(List<Placement> placements) {}
+
+    /** Applies a reviewed optimizer plan. Locked and fixed plans are never touched, whatever the plan says. */
+    @Transactional
+    public void applyPlan(UUID userId, UUID tripId, List<PlanItem> items, String summary) {
+        access.require(tripId, userId, TripRole.EDITOR);
+        Map<UUID, Destination> all = repo.findByTrip(tripId).stream().collect(Collectors.toMap(Destination::getId, Function.identity()));
+        int days = trips.dayCount(tripId);
+        List<Placement> before = new java.util.ArrayList<>();
+        List<Destination> changed = new java.util.ArrayList<>();
+        for (PlanItem i : items) {
+            Destination d = all.get(i.id());
+            if (d == null || (i.dayIndex() != null && (i.dayIndex() < 0 || i.dayIndex() >= days))) {
+                continue;
+            }
+            boolean pinned = d.isLocked() || d.getFlexibility() == Flexibility.FIXED;
+            // A pinned plan keeps its day and time; it may only shift position as stops are ordered around it.
+            if (pinned && (i.dayIndex() == null || !i.dayIndex().equals(d.getDayIndex()) || !Objects.equals(i.startTime(), d.getStartTime()))) {
+                continue;
+            }
+            if (Objects.equals(d.getDayIndex(), i.dayIndex()) && Objects.equals(d.getPosition(), i.position())
+                && Objects.equals(d.getStartTime(), i.startTime())) {
+                continue;
+            }
+            before.add(Placement.of(d));
+            d.scheduleAt(i.dayIndex(), i.dayIndex() == null ? null : i.position(), i.startTime());
+            changed.add(d);
+        }
+        repo.flush();
+        history.record(tripId, userId, "PLAN_APPLIED", summary, new PlanState(before),
+            new PlanState(changed.stream().map(Placement::of).toList()));
+    }
+
     /** Reverses one logged change, refusing if the item changed again since (so nobody's later edit is lost). */
     @Transactional
     public void undo(UUID userId, UUID tripId, long eventId) {
@@ -127,6 +168,19 @@ public class DestinationService {
                 Destination d = new Destination(before.id(), tripId, userId, before.providerId());
                 apply(d, before.input());
                 repo.save(d);
+            }
+            case "PLAN_APPLIED" -> {
+                List<Placement> after = history.read(e.getAfter(), PlanState.class).placements();
+                Map<UUID, Destination> now = repo.findByTrip(tripId).stream().collect(Collectors.toMap(Destination::getId, Function.identity()));
+                for (Placement p : after) {
+                    Destination d = now.get(p.id());
+                    if (d == null || d.getVersion() != p.version()) {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT, "Places changed since; undo would overwrite newer edits");
+                    }
+                }
+                for (Placement p : history.read(e.getBefore(), PlanState.class).placements()) {
+                    now.get(p.id()).scheduleAt(p.dayIndex(), p.position(), p.startTime());
+                }
             }
             default -> { // DAY_REORDERED
                 DayOrder before = history.read(e.getBefore(), DayOrder.class);

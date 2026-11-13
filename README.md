@@ -10,10 +10,12 @@ Collaborative AI travel planner: collect destinations, let AI organize them into
 Needs Docker, JDK 21+, Node 24, and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-docker compose up -d                                      # Postgres on localhost:5433
+docker compose up -d                                      # Postgres on :5433, LocalStack SQS on :4566
 (cd core-api && COOKIE_SECURE=false ./mvnw spring-boot:run)   # API on :8081
 (cd frontend && npm install && npm run dev)               # UI on :5173, proxies /api to :8081
-(cd ai-service && uv run uvicorn app.main:app --port 8090)   # AI service on :8090
+(cd ai-service && SQS_ENDPOINT=http://localhost:4566 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test \
+  INTERNAL_JWKS_URL=http://localhost:8081/.well-known/internal-jwks.json \
+  uv run uvicorn app.main:app --port 8090)               # AI service on :8090; reads ANTHROPIC_API_KEY from ../.env
 ```
 
 Without `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` the API signs tokens with a throwaway dev key (sessions end on restart). See [.env.example](.env.example).

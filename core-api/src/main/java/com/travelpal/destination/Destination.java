@@ -57,6 +57,11 @@ public class Destination {
         this.flexibility = flexibility == null ? Flexibility.FLEXIBLE : flexibility;
     }
 
+    void scheduleAt(Integer dayIndex, Integer position, LocalTime startTime) {
+        schedule(dayIndex, position);
+        this.startTime = startTime;
+    }
+
     void schedule(Integer dayIndex, Integer position) {
         this.dayIndex = dayIndex;
         this.position = position;

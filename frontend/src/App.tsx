@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './auth'
 import { AuthPage } from './pages/AuthPage'
 import { Dashboard } from './pages/Dashboard'
 import { JoinPage } from './pages/JoinPage'
+import { OptimizePage } from './pages/OptimizePage'
 import { TripPage } from './pages/TripPage'
 
 export function makeQueryClient() {
@@ -27,6 +28,7 @@ function Routed() {
       <Route path="/trips/:tripId/destinations" element={<TripPage tab="destinations" />} />
       <Route path="/trips/:tripId/members" element={<TripPage tab="members" />} />
       <Route path="/trips/:tripId/activity" element={<TripPage tab="activity" />} />
+      <Route path="/trips/:tripId/optimize/:previewId" element={<OptimizePage />} />
       <Route path="/join/:token" element={<JoinPage />} />
       <Route path="*" element={<Dashboard />} />
     </Routes>

@@ -20,3 +20,16 @@ export type HistoryEntry = {
 }
 export type InvitePreview = { tripId: string; name: string; startDate: string; endDate: string; cities: string[]; memberCount: number; member: boolean }
 export type Place = { name: string; address: string; lat: number; lng: number; providerId: string }
+
+export type Mode = 'RELAXED' | 'BALANCED' | 'PACKED'
+export type PlanItem = { id: string; dayIndex: number | null; position: number | null; startTime: string | null }
+export type PlanResult = {
+  items: PlanItem[]; moved: string[]; added: string[]; unscheduled: string[]; keptLocked: string[]
+  needsReview: { id: string; reason: string }[]; scheduled: number; total: number
+  explanation: string; notes: { kind: 'suggestion' | 'verified' | 'unsure'; text: string }[]
+}
+export type Preview = {
+  id: string; status: 'PENDING' | 'READY' | 'FAILED' | 'APPLIED' | 'DISCARDED'; stale: boolean
+  request: { mode: Mode; scope: 'TRIP' | 'DAY' | 'SELECTION'; dayIndex: number | null; instructions: string | null }
+  result: PlanResult | null; error: string | null; createdAt: string
+}

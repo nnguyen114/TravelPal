@@ -64,13 +64,19 @@ export async function endSession(): Promise<void> {
 }
 
 /**
- * Reads a server-sent-event stream with the bearer token (EventSource can't send headers).
- * Calls onEvent(name) per event; resolves when the stream ends.
+ * Reads a server-sent-event stream with the bearer token (EventSource can't send headers or a body).
+ * Calls onEvent(name, data) per event; resolves when the stream ends. A body makes it a POST.
  */
-export async function readEvents(path: string, onEvent: (name: string) => void, signal: AbortSignal): Promise<void> {
-  let res = await send(path, { signal })
-  if (res.status === 401 && (await refreshSession())) res = await send(path, { signal })
-  if (!res.ok || !res.body) throw new ApiError(res.status, 'Live updates unavailable')
+export async function readEvents(
+  path: string, onEvent: (name: string, data: string) => void, signal: AbortSignal, body?: unknown,
+): Promise<void> {
+  const init: RequestInit = body === undefined ? { signal } : { signal, method: 'POST', body: JSON.stringify(body) }
+  let res = await send(path, init)
+  if (res.status === 401 && (await refreshSession())) res = await send(path, init)
+  if (!res.ok || !res.body) {
+    const detail = await res.json().catch(() => null)
+    throw new ApiError(res.status, detail?.detail ?? 'Live updates unavailable')
+  }
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''
   for (;;) {
@@ -80,8 +86,10 @@ export async function readEvents(path: string, onEvent: (name: string) => void, 
     const events = buffer.split('\n\n')
     buffer = events.pop()!
     for (const e of events) {
-      const name = e.split('\n').find((l) => l.startsWith('event:'))?.slice(6).trim()
-      if (name) onEvent(name)
+      const lines = e.split('\n')
+      const name = lines.find((l) => l.startsWith('event:'))?.slice(6).trim()
+      const data = lines.filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trimStart()).join('\n')
+      if (name) onEvent(name, data)
     }
   }
 }
