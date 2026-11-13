@@ -1,0 +1,74 @@
+:root {
+  --bg: #F7F6F2;
+  --surface: #FFFFFF;
+  --ink: #1C2430;
+  --ink-2: #44505E;
+  --muted: #5B6472;
+  --line: #E8E6DF;
+  --line-2: #D8D5CC;
+  --soft: #F1EFE8;
+  --accent: #0E7C74;
+  --accent-ink: #0A5F59;
+  --accent-soft: #EEF6F4;
+  --accent-tint: #E2F3F0;
+  --warn-bg: #FFF1CC;
+  --warn-ink: #7A4F00;
+  --free-bg: #FFFBEF;
+  --free-line: #E9C979;
+  --danger-bg: #FDEBE4;
+  --danger-ink: #8E3A22;
+  --radius: 12px;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); }
+a { color: var(--accent); }
+a:hover { color: var(--accent-ink); }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid #7CC9C0; outline-offset: 2px; }
+h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
+
+.topbar { background: var(--surface); border-bottom: 1px solid var(--line); }
+.topbar-inner { max-width: 1440px; margin: 0 auto; padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; font-size: 18px; font-weight: 800; color: var(--ink); text-decoration: none; }
+.logo { width: 40px; height: 40px; border-radius: 12px; background: var(--accent); display: flex; align-items: center; justify-content: center; flex: none; }
+.avatar { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--surface); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; background: #FFD9A8; }
+
+.page { max-width: 1280px; margin: 0 auto; padding: 48px 32px 80px; }
+.muted { color: var(--muted); }
+.row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.spread { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: var(--radius); border: 1.5px solid var(--line-2); background: var(--surface); font-size: 14px; font-weight: 700; color: var(--ink); text-decoration: none; }
+.btn:disabled { opacity: .6; cursor: default; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-ink); color: #fff; }
+.btn-ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn-soft { background: #FAF9F6; border: 1px solid var(--line); min-height: 40px; font-size: 13px; padding: 0 14px; border-radius: 10px; }
+.btn-dark { background: var(--ink); border-color: var(--ink); color: #fff; border-radius: 999px; }
+.icon-btn { width: 44px; height: 44px; padding: 0; border: 0; background: transparent; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; }
+
+.pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; background: var(--soft); }
+.pill-warn { background: var(--warn-bg); color: var(--warn-ink); font-weight: 700; font-size: 12px; padding: 4px 10px; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; }
+
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.field input, .field textarea, .field select { min-height: 44px; border: 1.5px solid var(--line-2); border-radius: var(--radius); padding: 8px 12px; font-size: 15px; font-weight: 500; background: var(--surface); color: var(--ink); }
+.error { color: var(--danger-ink); background: var(--danger-bg); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+
+dialog { border: 0; border-radius: 22px; padding: 0; width: min(520px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(28,36,48,.25); color: var(--ink); }
+dialog::backdrop { background: rgba(28,36,48,.4); }
+.dialog-body { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+
+.segmented { display: inline-flex; background: #EDEBE4; border-radius: 12px; padding: 4px; }
+.segmented button { height: 36px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; font-size: 13px; font-weight: 600; color: var(--muted); }
+.segmented button[aria-pressed='true'] { background: var(--surface); color: var(--ink); font-weight: 700; box-shadow: 0 1px 3px rgba(28,36,48,.12); }
+
+@media (max-width: 640px) {
+  .topbar-inner, .page { padding-left: 16px; padding-right: 16px; }
+  .page { padding-top: 24px; }
+}

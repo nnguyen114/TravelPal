@@ -1,0 +1,15 @@
+# Local dependencies. Run services natively: see README.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: travelpal
+      POSTGRES_USER: travelpal
+      POSTGRES_PASSWORD: travelpal
+    ports: ["5433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U travelpal"]
+      interval: 5s
+volumes:
+  pgdata:

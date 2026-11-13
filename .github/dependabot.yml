@@ -1,0 +1,6 @@
+version: 2
+updates:
+  - { package-ecosystem: maven, directory: /core-api, schedule: { interval: weekly }, target-branch: develop }
+  - { package-ecosystem: uv, directory: /ai-service, schedule: { interval: weekly }, target-branch: develop }
+  - { package-ecosystem: npm, directory: /frontend, schedule: { interval: weekly }, target-branch: develop }
+  - { package-ecosystem: github-actions, directory: /, schedule: { interval: weekly }, target-branch: develop }
