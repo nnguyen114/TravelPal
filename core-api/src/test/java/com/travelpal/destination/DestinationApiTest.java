@@ -44,16 +44,26 @@ class DestinationApiTest extends IntegrationTest {
 
         // move b to day 1 with a fixed time and lock
         mvc.perform(json(put(base + "/destinations/" + b), who,
-                "{\"name\":\"Cat Street\",\"dayIndex\":1,\"startTime\":\"12:00\",\"locked\":true,\"flexibility\":\"FIXED\"}"))
+                "{\"name\":\"Cat Street\",\"dayIndex\":1,\"startTime\":\"12:00\",\"locked\":true,\"flexibility\":\"FIXED\",\"version\":0}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.dayIndex").value(1)).andExpect(jsonPath("$.position").value(0))
             .andExpect(jsonPath("$.locked").value(true)).andExpect(jsonPath("$.flexibility").value("FIXED"));
         // same day keeps position; unschedule clears it
-        mvc.perform(json(put(base + "/destinations/" + a), who, "{\"name\":\"Meiji\",\"dayIndex\":0}"))
+        mvc.perform(json(put(base + "/destinations/" + a), who, "{\"name\":\"Meiji\",\"dayIndex\":0,\"version\":0}"))
             .andExpect(jsonPath("$.position").value(0)).andExpect(jsonPath("$.flexibility").value("FLEXIBLE"));
-        mvc.perform(json(put(base + "/destinations/" + a), who, "{\"name\":\"Meiji\",\"dayIndex\":null}"))
+        mvc.perform(json(put(base + "/destinations/" + a), who, "{\"name\":\"Meiji\",\"dayIndex\":null,\"version\":1}"))
             .andExpect(jsonPath("$.position").doesNotExist());
         mvc.perform(auth(delete(base + "/destinations/" + a), who)).andExpect(status().isNoContent());
         mvc.perform(auth(delete(base + "/destinations/" + a), who)).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void staleOrMissingVersionIsRejected() throws Exception {
+        String a = add("A", "0");
+        mvc.perform(json(put(base + "/destinations/" + a), who, "{\"name\":\"A2\",\"version\":0}")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.version").value(1));
+        // a second editor still holding version 0 must not overwrite
+        mvc.perform(json(put(base + "/destinations/" + a), who, "{\"name\":\"A3\",\"version\":0}")).andExpect(status().isConflict());
+        mvc.perform(json(put(base + "/destinations/" + a), who, "{\"name\":\"A3\"}")).andExpect(status().isConflict());
     }
 
     @Test

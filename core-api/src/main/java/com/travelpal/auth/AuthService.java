@@ -2,13 +2,8 @@ package com.travelpal.auth;
 
 import com.travelpal.common.JwtProperties;
 import com.travelpal.common.SecurityConfig;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
+import com.travelpal.common.Tokens;
 import java.time.Instant;
-import java.util.Base64;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -26,7 +21,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class AuthService {
     public record Session(User user, String accessToken, String refreshToken) {}
 
-    private static final SecureRandom RANDOM = new SecureRandom();
     // Same cost as a real check, so unknown emails can't be told apart by timing.
     private final String dummyHash;
 
@@ -100,19 +94,13 @@ public class AuthService {
             .build();
         String access = jwt.encode(JwtEncoderParameters.from(JwsHeader.with(SignatureAlgorithm.ES256).build(), claims)).getTokenValue();
 
-        byte[] bytes = new byte[32];
-        RANDOM.nextBytes(bytes);
-        String raw = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        String raw = Tokens.random();
         tokens.save(new RefreshToken(user.getId(), familyId, hash(raw), now.plus(props.refreshTtl())));
         return new Session(user, access, raw);
     }
 
-    static String hash(String raw) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
+    private static String hash(String raw) {
+        return Tokens.sha256(raw);
     }
 
     private static ResponseStatusException unauthorized() {

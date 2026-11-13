@@ -30,6 +30,7 @@ public class TripController {
     }
     public record CreateTripRequest(@NotBlank @Size(max = 120) String name, @NotNull @Valid CityRequest destination,
                                     @NotNull LocalDate startDate, @NotNull LocalDate endDate) {}
+    public record RoleRequest(@NotNull TripRole role) {}
     public record UpdateTripRequest(@NotBlank @Size(max = 120) String name, @NotNull LocalDate startDate, @NotNull LocalDate endDate) {}
 
     public record CityDto(UUID id, String name, Double lat, Double lng, LocalDate startDate, LocalDate endDate, boolean locked) {
@@ -81,6 +82,19 @@ public class TripController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void delete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId) {
         trips.delete(Auth.userId(jwt), tripId);
+    }
+
+    @PutMapping("/{tripId}/members/{memberId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void changeRole(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId, @PathVariable UUID memberId,
+                    @Valid @RequestBody RoleRequest req) {
+        trips.changeRole(Auth.userId(jwt), tripId, memberId, req.role());
+    }
+
+    @DeleteMapping("/{tripId}/members/{memberId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void removeMember(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId, @PathVariable UUID memberId) {
+        trips.removeMember(Auth.userId(jwt), tripId, memberId);
     }
 
     @PostMapping("/{tripId}/cities")

@@ -1,5 +1,7 @@
 package com.travelpal.destination;
 
+import com.travelpal.history.History;
+import com.travelpal.history.TripEvent;
 import com.travelpal.trip.TripAccess;
 import com.travelpal.trip.TripRole;
 import com.travelpal.trip.TripService;
@@ -7,6 +9,7 @@ import java.time.LocalTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -20,14 +23,32 @@ public class DestinationService {
     public record Input(String name, String address, Double lat, Double lng, String providerId, String notes,
                         Integer durationMin, Integer dayIndex, LocalTime startTime, boolean locked, Flexibility flexibility) {}
 
+    /** Full state of a destination at one moment; stored in the activity log for undo. */
+    public record Snapshot(UUID id, String name, String address, Double lat, Double lng, String providerId, String notes,
+                           Integer durationMin, Integer dayIndex, LocalTime startTime, boolean locked, Flexibility flexibility,
+                           long version) {
+        static Snapshot of(Destination d) {
+            return new Snapshot(d.getId(), d.getName(), d.getAddress(), d.getLat(), d.getLng(), d.getProviderId(), d.getNotes(),
+                d.getDurationMin(), d.getDayIndex(), d.getStartTime(), d.isLocked(), d.getFlexibility(), d.getVersion());
+        }
+
+        Input input() {
+            return new Input(name, address, lat, lng, providerId, notes, durationMin, dayIndex, startTime, locked, flexibility);
+        }
+    }
+
+    private static final String STALE = "Someone else changed this since you loaded it. Refresh and try again.";
+
     private final DestinationRepository repo;
     private final TripAccess access;
     private final TripService trips;
+    private final History history;
 
-    DestinationService(DestinationRepository repo, TripAccess access, TripService trips) {
+    DestinationService(DestinationRepository repo, TripAccess access, TripService trips, History history) {
         this.repo = repo;
         this.access = access;
         this.trips = trips;
+        this.history = history;
     }
 
     @Transactional(readOnly = true)
@@ -42,27 +63,99 @@ public class DestinationService {
         access.require(tripId, userId, TripRole.EDITOR);
         Destination d = new Destination(tripId, userId, in.providerId());
         apply(d, in);
-        return repo.save(d);
+        repo.saveAndFlush(d);
+        history.record(tripId, userId, "DESTINATION_ADDED",
+            d.getDayIndex() == null ? "saved " + d.getName() + " as an idea" : "added " + d.getName() + " to Day " + (d.getDayIndex() + 1),
+            null, Snapshot.of(d));
+        return d;
     }
 
+    /** {@code version} must match what the editor saw, so a concurrent edit is never silently overwritten. */
     @Transactional
-    public Destination update(UUID userId, UUID tripId, UUID id, Input in) {
+    public Destination update(UUID userId, UUID tripId, UUID id, Long version, Input in) {
         access.require(tripId, userId, TripRole.EDITOR);
         Destination d = find(tripId, id);
+        if (version == null || version != d.getVersion()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, STALE);
+        }
+        Snapshot before = Snapshot.of(d);
         apply(d, in);
+        repo.flush();
+        history.record(tripId, userId, "DESTINATION_UPDATED", describeUpdate(before, d), before, Snapshot.of(d));
         return d;
     }
 
     @Transactional
     public void delete(UUID userId, UUID tripId, UUID id) {
         access.require(tripId, userId, TripRole.EDITOR);
-        repo.delete(find(tripId, id));
+        Destination d = find(tripId, id);
+        repo.delete(d);
+        history.record(tripId, userId, "DESTINATION_REMOVED", "removed " + d.getName(), Snapshot.of(d), null);
     }
 
     /** Sets the visit order of one day; ids must be exactly the stops currently on that day. */
     @Transactional
     public List<Destination> reorder(UUID userId, UUID tripId, int dayIndex, List<UUID> ids) {
         access.require(tripId, userId, TripRole.EDITOR);
+        List<UUID> before = order(tripId, dayIndex);
+        List<Destination> result = setOrder(tripId, dayIndex, ids);
+        history.record(tripId, userId, "DAY_REORDERED", "reordered Day " + (dayIndex + 1), new DayOrder(dayIndex, before), new DayOrder(dayIndex, ids));
+        return result;
+    }
+
+    record DayOrder(int dayIndex, List<UUID> ids) {}
+
+    /** Reverses one logged change, refusing if the item changed again since (so nobody's later edit is lost). */
+    @Transactional
+    public void undo(UUID userId, UUID tripId, long eventId) {
+        access.require(tripId, userId, TripRole.EDITOR);
+        TripEvent e = history.claimUndo(tripId, eventId);
+        switch (e.getType()) {
+            case "DESTINATION_ADDED" -> {
+                Snapshot after = history.read(e.getAfter(), Snapshot.class);
+                repo.delete(current(tripId, after));
+            }
+            case "DESTINATION_UPDATED" -> {
+                Snapshot after = history.read(e.getAfter(), Snapshot.class);
+                apply(current(tripId, after), history.read(e.getBefore(), Snapshot.class).input());
+            }
+            case "DESTINATION_REMOVED" -> {
+                Snapshot before = history.read(e.getBefore(), Snapshot.class);
+                if (repo.existsById(before.id())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "It has already been restored");
+                }
+                Destination d = new Destination(before.id(), tripId, userId, before.providerId());
+                apply(d, before.input());
+                repo.save(d);
+            }
+            default -> { // DAY_REORDERED
+                DayOrder before = history.read(e.getBefore(), DayOrder.class);
+                DayOrder after = history.read(e.getAfter(), DayOrder.class);
+                if (!order(tripId, after.dayIndex()).equals(after.ids())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "That day changed since; undo would overwrite newer edits");
+                }
+                setOrder(tripId, before.dayIndex(), before.ids());
+            }
+        }
+        repo.flush();
+        history.record(tripId, userId, "UNDO", "undid: " + e.getSummary(), null, Map.of("eventId", eventId));
+    }
+
+    private Destination current(UUID tripId, Snapshot expected) {
+        Destination d = repo.findByIdAndTripId(expected.id(), tripId).orElseThrow(
+            () -> new ResponseStatusException(HttpStatus.CONFLICT, "It was removed since; nothing to undo"));
+        if (d.getVersion() != expected.version()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "It changed since; undo would overwrite newer edits");
+        }
+        return d;
+    }
+
+    private List<UUID> order(UUID tripId, int dayIndex) {
+        return repo.findByTripIdAndDayIndex(tripId, dayIndex).stream()
+            .sorted((a, b) -> Integer.compare(a.getPosition(), b.getPosition())).map(Destination::getId).toList();
+    }
+
+    private List<Destination> setOrder(UUID tripId, int dayIndex, List<UUID> ids) {
         Map<UUID, Destination> onDay = repo.findByTripIdAndDayIndex(tripId, dayIndex).stream()
             .collect(Collectors.toMap(Destination::getId, Function.identity()));
         if (ids.size() != onDay.size() || !onDay.keySet().equals(new HashSet<>(ids))) {
@@ -85,6 +178,16 @@ public class DestinationService {
             d.schedule(day, repo.maxPosition(d.getTripId(), day) + 1);
         }
         d.details(in.name(), in.address(), in.lat(), in.lng(), in.notes(), in.durationMin(), in.startTime(), in.locked(), in.flexibility());
+    }
+
+    private static String describeUpdate(Snapshot before, Destination d) {
+        if (!Objects.equals(before.dayIndex(), d.getDayIndex())) {
+            return d.getDayIndex() == null ? "moved " + d.getName() + " to Unscheduled" : "moved " + d.getName() + " to Day " + (d.getDayIndex() + 1);
+        }
+        if (before.locked() != d.isLocked()) {
+            return (d.isLocked() ? "locked " : "unlocked ") + d.getName();
+        }
+        return "updated " + d.getName();
     }
 
     private Destination find(UUID tripId, UUID id) {
