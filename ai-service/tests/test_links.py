@@ -14,8 +14,19 @@ def client(routes):
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
+HOSTS = {"short.link": "93.184.216.1", "site.example": "93.184.216.2", "social.example": "93.184.216.3", "a.example": "93.184.216.4"}
+BY_IP = {v: k for k, v in HOSTS.items()}
+
+
 def public(monkeypatch):
-    monkeypatch.setattr(links, "public_host", lambda h: h != "internal.local")
+    monkeypatch.setattr(links, "public_ip", lambda h: HOSTS.get(h))
+
+
+def host(r: httpx.Request) -> str:
+    """Requests go to the pinned IP; the Host header carries the name."""
+    assert r.url.host in BY_IP and r.headers["host"] == BY_IP[r.url.host]
+    assert r.extensions["sni_hostname"] == r.headers["host"]
+    return r.headers["host"]
 
 
 def test_google_maps_links_need_no_fetch():
@@ -33,11 +44,13 @@ def test_reads_a_page_follows_safe_redirects_and_finds_the_place(monkeypatch):
     public(monkeypatch)
 
     def routes(r):
-        if r.url.host == "short.link":
+        if r.url.host == "photon.komoot.io":
+            return httpx.Response(200, json=PHOTON)
+        if host(r) == "short.link":
             return httpx.Response(301, headers={"location": "https://site.example/cafe"})
-        if r.url.host == "site.example":
+        if host(r) == "site.example":
             return httpx.Response(200, text=PAGE, headers={"content-type": "text/html; charset=utf-8"})
-        return httpx.Response(200, json=PHOTON)
+        return httpx.Response(404)
     out = links.resolve("https://short.link/abc", None, client(routes))
     assert out["readable"] and out["guess"] == "Koffee Mameya Kakeru"
     assert out["candidates"][0]["address"] == "Kiyosumi, Tokyo"
@@ -50,7 +63,7 @@ def test_uses_claude_when_available(monkeypatch):
     seen = []
 
     def routes(r):
-        if r.url.host == "site.example":
+        if r.url.host != "photon.komoot.io" and host(r) == "site.example":
             return httpx.Response(200, text=PAGE, headers={"content-type": "text/html"})
         seen.append(r.url.params["q"])
         return httpx.Response(200, json={"features": []})
@@ -83,6 +96,21 @@ def test_page_without_a_place(monkeypatch):
     assert out["guess"] is None and "couldn't tell which place" in out["message"]
 
 
-def test_public_host_checks_real_dns():
-    assert links.public_host("localhost") is False
-    assert links.public_host("no-such-host.invalid") is False
+def test_public_ip_checks_real_dns(monkeypatch):
+    assert links.public_ip("localhost") is None
+    assert links.public_ip("no-such-host.invalid") is None
+    monkeypatch.setattr(links.socket, "getaddrinfo", lambda h, p: [(0, 0, 0, "", ("93.184.216.34", 0)), (0, 0, 0, "", ("10.0.0.5", 0))])
+    assert links.public_ip("mixed.example") is None  # one private answer is enough to refuse
+    monkeypatch.setattr(links.socket, "getaddrinfo", lambda h, p: [(0, 0, 0, "", ("2606:2800:220:1::1", 0, 0, 0))])
+    assert links.public_ip("v6.example") == "2606:2800:220:1::1"
+
+
+def test_ipv6_and_ports_are_pinned(monkeypatch):
+    monkeypatch.setattr(links, "public_ip", lambda h: "2606:2800:220:1::1")
+    seen = []
+
+    def routes(r):
+        seen.append((str(r.url), r.headers["host"]))
+        return httpx.Response(200, text="<title>Café X | Tokyo</title>", headers={"content-type": "text/html"})
+    links.fetch("https://user@v6.example:8443/p?q=1", client(routes))
+    assert seen == [("https://[2606:2800:220:1::1]:8443/p?q=1", "v6.example:8443")]

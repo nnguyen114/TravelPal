@@ -34,35 +34,55 @@ GUESS_SCHEMA = {
 }
 
 
+# Fixed wording per failure: nothing from an exception or the remote site reaches the response.
+MESSAGES = {
+    "blocked": "That link points somewhere we can't open.",
+    "unreadable": "That page couldn't be read (it may need a login).",
+    "unreachable": "That page couldn't be reached.",
+    "redirects": "That link redirects too many times.",
+}
+
+
 class Unreadable(Exception):
-    pass
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 
-def public_host(host: str) -> bool:
+def public_ip(host: str) -> str | None:
+    """The address to connect to, or None unless every address the name resolves to is public."""
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror:
-        return False
-    for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
-        if not ip.is_global or ip.is_multicast:
-            return False
-    return True
+        return None
+    ips = [ipaddress.ip_address(info[4][0]) for info in infos]
+    if not ips or any(not ip.is_global or ip.is_multicast for ip in ips):
+        return None
+    return str(ips[0])
 
 
 def fetch(url: str, http: httpx.Client) -> str:
-    """GET with manual redirects so every hop is checked; HTML only, size-capped."""
+    """GET with manual redirects so every hop is checked; HTML only, size-capped.
+
+    Each hop connects to the exact IP that passed the public-address check (so a DNS answer that changes between
+    check and connect can't reach our network), while Host and TLS SNI keep the real name for routing and
+    certificate checks.
+    """
     for _ in range(MAX_REDIRECTS + 1):
         u = urlparse(url)
-        if u.scheme not in ("http", "https") or not u.hostname or not public_host(u.hostname):
-            raise Unreadable("That link points somewhere we can't open.")
+        ip = public_ip(u.hostname) if u.scheme in ("http", "https") and u.hostname else None
+        if ip is None:
+            raise Unreadable("blocked")
+        host = f"[{ip}]" if ":" in ip else ip
+        pinned = u._replace(netloc=f"{host}:{u.port}" if u.port else host).geturl()
         try:
-            with http.stream("GET", url, timeout=6, follow_redirects=False) as r:
+            with http.stream("GET", pinned, timeout=6, follow_redirects=False,
+                             headers={"Host": u.netloc.rsplit("@", 1)[-1]}, extensions={"sni_hostname": u.hostname}) as r:
                 if r.is_redirect and r.headers.get("location"):
                     url = urljoin(url, r.headers["location"])
                     continue
                 if r.status_code != 200 or "html" not in r.headers.get("content-type", ""):
-                    raise Unreadable("That page couldn't be read (it may need a login).")
+                    raise Unreadable("unreadable")
                 body = b""
                 for chunk in r.iter_bytes():
                     body += chunk
@@ -70,8 +90,8 @@ def fetch(url: str, http: httpx.Client) -> str:
                         break
                 return body.decode(r.encoding or "utf-8", errors="replace")
         except httpx.HTTPError as e:
-            raise Unreadable("That page couldn't be reached.") from e
-    raise Unreadable("That link redirects too many times.")
+            raise Unreadable("unreachable") from e
+    raise Unreadable("redirects")
 
 
 def page_text(page: str) -> str:
@@ -120,7 +140,8 @@ def resolve(url: str, near: dict | None, http: httpx.Client | None = None) -> di
     try:
         text = page_text(fetch(url, http))
     except Unreadable as e:
-        return {"readable": False, "guess": None, "candidates": [], "message": f"{e} Type the place name instead."}
+        return {"readable": False, "guess": None, "candidates": [],
+                "message": MESSAGES.get(e.reason, MESSAGES["unreadable"]) + " Type the place name instead."}
     place, area = guess(text, url)
     if not place:
         return {"readable": True, "guess": None, "candidates": [],
