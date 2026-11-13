@@ -5,19 +5,19 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.time.Duration;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** Fixed-window limit on credential endpoints, per client IP. */
-// ponytail: per-instance memory; move counters to Redis when running more than one core-api task.
+/** Per-client-IP limit on credential endpoints (per-account limits live in AuthService). */
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
     static final int LIMIT_PER_MINUTE = 10;
-    private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
-    private volatile long window = currentWindow();
+    private final Counters counters;
+
+    RateLimitFilter(Counters counters) {
+        this.counters = counters;
+    }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest req) {
@@ -28,20 +28,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
-        long now = currentWindow();
-        if (now != window) {
-            window = now;
-            counts.clear();
-        }
-        if (counts.computeIfAbsent(req.getRemoteAddr(), k -> new AtomicInteger()).incrementAndGet() > LIMIT_PER_MINUTE) {
+        // Behind the ALB, getRemoteAddr is the client: Tomcat takes it from X-Forwarded-For set by the trusted proxy.
+        if (!counters.allow("ip:" + req.getRemoteAddr(), LIMIT_PER_MINUTE, Duration.ofMinutes(1))) {
             res.setStatus(429);
             res.setHeader("Retry-After", "60");
             return;
         }
         chain.doFilter(req, res);
-    }
-
-    private static long currentWindow() {
-        return System.currentTimeMillis() / 60_000;
     }
 }

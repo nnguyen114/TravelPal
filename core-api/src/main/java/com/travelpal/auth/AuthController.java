@@ -15,6 +15,7 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -30,6 +31,7 @@ public class AuthController {
     public record RegisterRequest(@NotBlank @Email @Size(max = 254) String email,
                                   @NotBlank @Size(min = 10, max = 128) String password,
                                   @NotBlank @Size(max = 80) String displayName) {}
+    public record DeleteAccountRequest(@NotBlank @Size(max = 128) String password) {}
     public record LoginRequest(@NotBlank String email, @NotBlank @Size(max = 128) String password) {}
     public record UserDto(UUID id, String email, String displayName) {
         static UserDto of(User u) { return new UserDto(u.getId(), u.getEmail(), u.getDisplayName()); }
@@ -77,6 +79,13 @@ public class AuthController {
     @GetMapping("/me")
     UserDto me(@AuthenticationPrincipal Jwt jwt) {
         return UserDto.of(auth.me(Auth.userId(jwt)));
+    }
+
+    @DeleteMapping("/me")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void deleteAccount(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody DeleteAccountRequest req, HttpServletResponse res) {
+        auth.deleteAccount(Auth.userId(jwt), req.password());
+        res.addHeader(HttpHeaders.SET_COOKIE, cookie("", 0).toString());
     }
 
     private SessionDto respond(AuthService.Session s, HttpServletResponse res) {

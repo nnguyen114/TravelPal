@@ -1,15 +1,13 @@
 package com.travelpal.optimize;
 
-import java.util.Map;
+import com.travelpal.common.Counters;
+import java.time.Duration;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 /** Per-user hourly caps on AI calls, so one account can't run up the Claude bill. */
-// ponytail: per-instance fixed window in memory; move to Redis once core-api runs more than one task.
 @Component
 public class AiQuota {
     public enum Kind {
@@ -22,21 +20,15 @@ public class AiQuota {
         }
     }
 
-    private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
-    private volatile long hour = currentHour();
+    private final Counters counters;
 
-    public void spend(UUID userId, Kind kind) {
-        long now = currentHour();
-        if (now != hour) {
-            hour = now;
-            counts.clear();
-        }
-        if (counts.computeIfAbsent(userId + ":" + kind, k -> new AtomicInteger()).incrementAndGet() > kind.perHour) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "You've hit the hourly AI limit. Try again later.");
-        }
+    AiQuota(Counters counters) {
+        this.counters = counters;
     }
 
-    private static long currentHour() {
-        return System.currentTimeMillis() / 3_600_000;
+    public void spend(UUID userId, Kind kind) {
+        if (!counters.allow("ai:" + kind + ":" + userId, kind.perHour, Duration.ofHours(1))) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "You've hit the hourly AI limit. Try again later.");
+        }
     }
 }

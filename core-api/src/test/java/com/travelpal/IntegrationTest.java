@@ -22,6 +22,7 @@ import java.net.InetSocketAddress;
 import java.util.function.Consumer;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.localstack.LocalStackContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
@@ -31,6 +32,9 @@ public abstract class IntegrationTest {
     @ServiceConnection
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17-alpine");
 
+    @ServiceConnection(name = "redis")
+    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
+
     protected static final LocalStackContainer LOCALSTACK = new LocalStackContainer("localstack/localstack:4.9").withServices("sqs");
 
     /** Stand-in for ai-service's HTTP API; tests swap the handler. */
@@ -39,6 +43,7 @@ public abstract class IntegrationTest {
 
     static {
         POSTGRES.start();
+        REDIS.start();
         LOCALSTACK.start();
         try {
             FAKE_AI = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

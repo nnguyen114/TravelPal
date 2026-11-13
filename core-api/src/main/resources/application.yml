@@ -9,14 +9,17 @@ spring:
     open-in-view: false
     hibernate.ddl-auto: validate
   mvc.problemdetails.enabled: true
+  # Rate limits, AI quotas, ended sessions and live-update fan-out are shared through Redis (rediss:// in AWS).
+  data.redis.url: ${REDIS_URL:redis://localhost:6379}
   # Omitted booleans (e.g. "locked") mean false; Jackson 3 rejects them by default.
   jackson.deserialization.fail-on-null-for-primitives: false
 server:
   port: ${PORT:8081}
   forward-headers-strategy: native
-  error.include-message: always
 management.endpoints.web.exposure.include: health
 travelpal:
+  # Throwaway signing keys when the key settings are empty. Fine locally; AWS sets DEV_KEYS=false so a missing key stops startup.
+  dev-keys: ${DEV_KEYS:true}
   jwt:
     # PEM (PKCS#8 / X.509) EC P-256 keys. Unset = ephemeral dev key (tokens die on restart, single instance only).
     private-key: ${JWT_PRIVATE_KEY:}

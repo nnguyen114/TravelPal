@@ -98,6 +98,7 @@ public class DestinationService {
     /** Moves a place to another day (null = unscheduled), keeping everything else about it. */
     @Transactional
     public Destination move(UUID userId, UUID tripId, UUID id, long version, Integer dayIndex, LocalTime startTime) {
+        access.require(tripId, userId, TripRole.EDITOR);
         Input current = Snapshot.of(find(tripId, id)).input();
         return update(userId, tripId, id, version, new Input(current.name(), current.address(), current.lat(), current.lng(),
             current.providerId(), current.notes(), current.durationMin(), dayIndex, startTime, current.locked(), current.flexibility(),

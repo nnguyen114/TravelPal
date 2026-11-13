@@ -167,6 +167,7 @@ public class ProposalService {
     /** Editors can close any proposal; authors can close their own. */
     @Transactional
     public View close(UUID userId, UUID tripId, UUID id) {
+        access.require(tripId, userId, TripRole.VIEWER);
         Proposal p = open(tripId, id);
         access.require(tripId, userId, userId.equals(p.getAuthorId()) ? TripRole.VIEWER : TripRole.EDITOR);
         p.settle(Proposal.Status.CLOSED, userId);

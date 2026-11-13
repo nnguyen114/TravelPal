@@ -162,6 +162,23 @@ public class TripService {
         history.record(tripId, userId, "MEMBER_REMOVED", userId.equals(memberId) ? "left the trip" : "removed " + who, null, null);
     }
 
+    /** Account deletion: each trip this user solely owns goes to its longest-standing member, or is deleted if they're alone. */
+    @Transactional
+    public void releaseAll(UUID userId) {
+        for (TripMember m : members.findByUserId(userId)) {
+            UUID tripId = m.getTripId();
+            var next = members.findFirstByTripIdAndUserIdNotOrderByJoinedAtAsc(tripId, userId);
+            if (next.isEmpty()) {
+                trips.deleteById(tripId);
+                continue;
+            }
+            if (m.getRole() == TripRole.OWNER && members.countByTripIdAndRole(tripId, TripRole.OWNER) == 1) {
+                next.get().setRole(TripRole.OWNER);
+            }
+            history.record(tripId, userId, "MEMBER_REMOVED", "left the trip", null, null);
+        }
+    }
+
     private TripMember member(UUID tripId, UUID memberId) {
         return members.findByTripIdAndUserId(tripId, memberId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Member not found"));
