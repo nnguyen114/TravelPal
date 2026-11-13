@@ -1,0 +1,27 @@
+spring:
+  application.name: core-api
+  threads.virtual.enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/travelpal}
+    username: ${DB_USER:travelpal}
+    password: ${DB_PASSWORD:travelpal}
+  jpa:
+    open-in-view: false
+    hibernate.ddl-auto: validate
+  mvc.problemdetails.enabled: true
+  # Omitted booleans (e.g. "locked") mean false; Jackson 3 rejects them by default.
+  jackson.deserialization.fail-on-null-for-primitives: false
+server:
+  port: ${PORT:8081}
+  forward-headers-strategy: native
+  error.include-message: always
+management.endpoints.web.exposure.include: health
+travelpal:
+  jwt:
+    # PEM (PKCS#8 / X.509) EC P-256 keys. Unset = ephemeral dev key (tokens die on restart, single instance only).
+    private-key: ${JWT_PRIVATE_KEY:}
+    public-key: ${JWT_PUBLIC_KEY:}
+    access-ttl: 15m
+    refresh-ttl: 30d
+  cookie-secure: ${COOKIE_SECURE:true}
+  places-url: ${PLACES_URL:https://photon.komoot.io}

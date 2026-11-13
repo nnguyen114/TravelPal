@@ -36,3 +36,6 @@ test-results/
 .terraform/
 *.tfstate
 *.tfstate.*
+
+# Maven
+target/
