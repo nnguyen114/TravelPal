@@ -38,7 +38,7 @@ async def test_streams_text_and_caches_trip_context():
     assert ctx["places"][0] == {"name": "Meiji Jingu", "day": 1, "time": None, "minutes": 90, "locked": False, "address": None,
                                  "bestAfter": None, "bestBefore": None, "dayTrip": False}
     assert "id" not in ctx["places"][0] and "dayIndex" not in call["system"][1]["text"]
-    assert {t["name"] for t in call["tools"]} == {"propose_places", "propose_optimization", "check_fit"}
+    assert {t["name"] for t in call["tools"]} == {"propose_places", "propose_optimization", "check_fit", "find_places"}
 
 
 @pytest.mark.anyio
@@ -48,7 +48,8 @@ async def test_proposals_are_emitted_not_applied_and_bad_input_is_reported():
                 tool_use("t2", "propose_optimization", {"mode": "RELAXED", "day_number": 0, "instructions": "slow mornings"}),
                 tool_use("t3", "check_fit", {"day_number": 1, "minutes": 240}),
                 tool_use("t4", "propose_places", {"places": []}),
-                tool_use("t5", "delete_trip", {}), stop_reason="tool_use"),
+                tool_use("t5", "delete_trip", {}),
+                tool_use("t6", "find_places", {"query": "quiet bars", "day_number": 2}), stop_reason="tool_use"),
         message(text("Buttons are below.")),
     )
     events = await collect(chat.chat_events(req("add tsukiji"), fake))
@@ -57,6 +58,7 @@ async def test_proposals_are_emitted_not_applied_and_bad_input_is_reported():
     results = fake.calls[1]["messages"][-1]["content"]
     assert "about" in results[2]["content"] and "doesn't fit" in results[2]["content"]
     assert results[3]["is_error"] and results[4]["is_error"]
+    assert ("proposal", {"type": "discover", "query": "quiet bars", "day_number": 2}) in events
     assert events[-2:] == [("text", {"text": "Buttons are below."}), ("done", {})]
 
 

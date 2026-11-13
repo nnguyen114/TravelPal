@@ -32,6 +32,8 @@ public class Destination {
     private LocalTime visitBefore;
     private boolean dayTrip;
     private String hintsSource;
+    @jakarta.persistence.Column(insertable = false, updatable = false)
+    private java.time.Instant createdAt;
     @Version
     private long version;
 

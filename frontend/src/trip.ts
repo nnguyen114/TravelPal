@@ -47,6 +47,23 @@ export function bestTime(d: Pick<Destination, 'visitAfter' | 'visitBefore' | 'da
   return ''
 }
 
+const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+const toHHMM = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+
+/** The longest stretch of at least 90 minutes with nothing planned, within a 09:00-19:00 day. */
+export function freeTime(stops: Destination[], dayStart = 9 * 60, dayEnd = 19 * 60): { from: string; to: string } | null {
+  const busy = stops.filter((s) => s.startTime).map((s) => [toMin(s.startTime!), toMin(s.startTime!) + (s.durationMin ?? 60)])
+    .sort((a, b) => a[0] - b[0])
+  let best: [number, number] | null = null
+  let t = dayStart
+  for (const [start, end] of [...busy, [dayEnd, dayEnd]]) {
+    const gapEnd = Math.min(start, dayEnd)
+    if (gapEnd - t >= 90 && (!best || gapEnd - t > best[1] - best[0])) best = [t, gapEnd]
+    t = Math.max(t, end)
+  }
+  return best && { from: toHHMM(best[0]), to: toHHMM(best[1]) }
+}
+
 export function byDay(trip: Trip, destinations: Destination[]): Destination[][] {
   const days: Destination[][] = Array.from({ length: trip.dayCount }, () => [])
   for (const d of destinations) if (d.dayIndex !== null && d.dayIndex < trip.dayCount) days[d.dayIndex].push(d)

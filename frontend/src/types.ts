@@ -48,3 +48,8 @@ export type Proposal = {
   changes: ProposalChange[]; affectedDays: number[]; commentCount: number; stale: boolean
   impact: Impact | null; impactByName: string | null; comments: ProposalComment[] | null
 }
+export type Suggestion = {
+  name: string; address: string; lat: number; lng: number; providerId: string; category: string; why: string; distanceKm: number
+}
+export type DiscoverResult = { vibe: string; suggestions: Suggestion[]; note: string }
+export type LinkResult = { readable: boolean; guess: string | null; candidates: Place[]; message: string | null }

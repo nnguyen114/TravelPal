@@ -8,7 +8,8 @@ import { useTripLive } from '../live'
 import { AskAiButton, AssistantDrawer } from '../assistant'
 import { PaceSwitch, useOptimize } from '../optimize'
 import { SparkleIcon } from '../icons'
-import { bestTime, byDay, canEdit, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, toInput } from '../trip'
+import { bestTime, byDay, canEdit, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, freeTime, toInput } from '../trip'
+import { DiscoverSheet, type DiscoverAsk } from '../discover'
 import type { Destination, Mode, Proposal, Trip } from '../types'
 import { SuggestionsTab } from './Suggestions'
 import { ActivityTab, MembersTab } from './CollabTabs'
@@ -77,10 +78,12 @@ function useReorder(trip: Trip) {
   })
 }
 
-function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEdit, onOptimize }: {
+function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEdit, onOptimize, onFindMore }: {
   trip: Trip; index: number; stops: Destination[]; active: boolean; selectedId: string | null
   onSelect: (id: string) => void; onAdd: () => void; onEdit: (d: Destination) => void; onOptimize: () => void
+  onFindMore: (free: string) => void
 }) {
+  const free = stops.length > 0 ? freeTime(stops) : null
   const date = dayDate(trip, index)
   const color = dayColor(index)
   const reorder = useReorder(trip)
@@ -127,6 +130,13 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
           </li>
         ))}
       </ol>
+      {free && (
+        <div className="free-time">
+          <span><strong>Free time</strong> · {free.from} – {free.to}, nothing planned</span>
+          <button className="btn-ghost" style={{ border: 0, background: 'none', color: 'var(--accent)', fontWeight: 700, minHeight: 44 }}
+            onClick={() => onFindMore(`${free.from} – ${free.to}`)}>Find More Places</button>
+        </div>
+      )}
       {editable && (
         <div className="row" style={{ marginTop: 14, gap: 8 }}>
           <button className="btn btn-soft" onClick={onAdd}>+ Add</button>
@@ -146,6 +156,7 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [adding, setAdding] = useState<number | null | undefined>(undefined)
   const [editing, setEditing] = useState<Destination | null>(null)
+  const [discover, setDiscover] = useState<DiscoverAsk | null>(null)
   const list = useRef<HTMLElement>(null)
 
   // As day sections scroll past, the map follows the one at the top of the viewport.
@@ -190,7 +201,8 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
         {days.map((stops, i) => (
           <DayCard key={i} trip={trip} index={i} stops={stops} active={activeDay === i} selectedId={selectedId}
             onSelect={(id) => { setSelectedId(id); setActiveDay(i) }} onAdd={() => setAdding(i)} onEdit={setEditing}
-            onOptimize={() => optimize.mutate({ mode, scope: 'DAY', dayIndex: i })} />
+            onOptimize={() => optimize.mutate({ mode, scope: 'DAY', dayIndex: i })}
+            onFindMore={(free) => setDiscover({ dayIndex: i, context: `Near Day ${i + 1} · free ${free}` })} />
         ))}
         {unscheduled > 0 && (
           <div className="spread" style={{ background: 'var(--accent-soft)', borderRadius: 20, padding: '18px 22px' }}>
@@ -225,7 +237,11 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
       </section>
 
       {adding !== undefined && <AddDestinationDialog trip={trip} day={adding} onClose={() => setAdding(undefined)} />}
-      {editing && <EditDestinationDialog trip={trip} dest={editing} onClose={() => setEditing(null)} />}
+      {editing && <EditDestinationDialog trip={trip} dest={editing} onClose={() => setEditing(null)} onMoreLikeThis={() => {
+        setDiscover({ dayIndex: editing.dayIndex, like: { id: editing.id, name: editing.name }, context: `More like ${editing.name}` })
+        setEditing(null)
+      }} />}
+      {discover && <DiscoverSheet trip={trip} ask={discover} onClose={() => setDiscover(null)} />}
     </main>
   )
 }
@@ -237,6 +253,7 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
   const [filter, setFilter] = useState<Filter>('all')
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Destination | null>(null)
+  const [discover, setDiscover] = useState<DiscoverAsk | null>(null)
   const schedule = useMutation({
     mutationFn: ({ d, day }: { d: Destination; day: number }) =>
       api(`/api/trips/${trip.id}/destinations/${d.id}`, { method: 'PUT', body: toInput(d, { dayIndex: day }) }),
@@ -255,7 +272,10 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
             </button>
           ))}
         </div>
-        {canEdit(trip) && <button className="btn" onClick={() => setAdding(true)}><PlusIcon /> Add Destination</button>}
+        <div className="row" style={{ gap: 10 }}>
+          <button className="btn" onClick={() => setDiscover({ dayIndex: null, context: `Anywhere in ${trip.cities[0]?.name ?? 'the trip'}` })}>Find More Places</button>
+          {canEdit(trip) && <button className="btn" onClick={() => setAdding(true)}><PlusIcon /> Add Destination</button>}
+        </div>
       </div>
       {schedule.error && <div role="alert" className="error" style={{ marginTop: 16 }}>{schedule.error.message}</div>}
       <ul style={{ listStyle: 'none', margin: '20px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -283,7 +303,11 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
         ))}
       </ul>
       {adding && <AddDestinationDialog trip={trip} day={null} onClose={() => setAdding(false)} />}
-      {editing && <EditDestinationDialog trip={trip} dest={editing} onClose={() => setEditing(null)} />}
+      {editing && <EditDestinationDialog trip={trip} dest={editing} onClose={() => setEditing(null)} onMoreLikeThis={() => {
+        setDiscover({ dayIndex: null, like: { id: editing.id, name: editing.name }, context: `More like ${editing.name}` })
+        setEditing(null)
+      }} />}
+      {discover && <DiscoverSheet trip={trip} ask={discover} onClose={() => setDiscover(null)} />}
     </main>
   )
 }
@@ -291,6 +315,7 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
 export function TripPage({ tab }: { tab: Tab }) {
   const { tripId } = useParams()
   const [askOpen, setAskOpen] = useState(false)
+  const [chatDiscover, setChatDiscover] = useState<DiscoverAsk | null>(null)
   useTripLive(tripId)
   const trip = useQuery({ queryKey: ['trip', tripId], queryFn: () => api<Trip>(`/api/trips/${tripId}`) })
   const destinations = useQuery({ queryKey: ['destinations', tripId], queryFn: () => api<Destination[]>(`/api/trips/${tripId}/destinations`) })
@@ -313,7 +338,11 @@ export function TripPage({ tab }: { tab: Tab }) {
       {tab === 'suggestions' && <SuggestionsTab trip={trip.data} destinations={destinations.data} proposals={proposals.data ?? []} />}
       {tab === 'members' && <MembersTab trip={trip.data} />}
       {tab === 'activity' && <ActivityTab trip={trip.data} />}
-      {askOpen ? <AssistantDrawer trip={trip.data} onClose={() => setAskOpen(false)} /> : <AskAiButton onClick={() => setAskOpen(true)} />}
+      {askOpen
+        ? <AssistantDrawer trip={trip.data} onClose={() => setAskOpen(false)}
+            onDiscover={(query, dayIndex) => setChatDiscover({ query, dayIndex, context: dayIndex === null ? 'Anywhere in the trip' : `Near Day ${dayIndex + 1}` })} />
+        : <AskAiButton onClick={() => setAskOpen(true)} />}
+      {chatDiscover && <DiscoverSheet trip={trip.data} ask={chatDiscover} onClose={() => setChatDiscover(null)} />}
     </>
   )
 }

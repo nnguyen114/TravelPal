@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router'
 import { api } from './api'
 import { CloseIcon } from './icons'
 import { dayDate, formatDay, toInput } from './trip'
-import type { Destination, DestinationInput, Flexibility, Place, Proposal, Trip } from './types'
+import type { Destination, DestinationInput, Flexibility, LinkResult, Place, Proposal, Trip } from './types'
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null)
@@ -29,7 +29,9 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
 const errorText = (e: unknown) => (e ? <div role="alert" className="error">{(e as Error).message}</div> : null)
 
 /** Searches places through core-api; picking one fills the form, typing alone is a manual entry. */
-export function PlaceSearch({ label, bias, onPick }: { label: string; bias?: { lat: number | null; lng: number | null }; onPick: (p: Place | null, text: string) => void }) {
+export function PlaceSearch({ label, bias, onPick, required = true }: {
+  label: string; bias?: { lat: number | null; lng: number | null }; onPick: (p: Place | null, text: string) => void; required?: boolean
+}) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<Place[]>([])
   const [picked, setPicked] = useState<string | null>(null)
@@ -48,7 +50,7 @@ export function PlaceSearch({ label, bias, onPick }: { label: string; bias?: { l
     <div className="field">
       <label htmlFor="place-q">{label}</label>
       <div className="row" style={{ flexWrap: 'nowrap' }}>
-        <input id="place-q" style={{ flex: 1 }} value={q} required maxLength={200}
+        <input id="place-q" style={{ flex: 1 }} value={q} required={required} maxLength={200}
           onChange={(e) => { setQ(e.target.value); setPicked(null); onPick(null, e.target.value) }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); search() } }} />
         <button type="button" className="btn" onClick={search}>Search</button>
@@ -67,6 +69,42 @@ export function PlaceSearch({ label, bias, onPick }: { label: string; bias?: { l
         </ul>
       )}
       {!picked && q && <span className="muted" style={{ fontWeight: 500 }}>Not finding it? It will be added as typed.</span>}
+    </div>
+  )
+}
+
+/** Paste a Maps/TikTok/Instagram/website link; we suggest matching places and the traveler confirms one. */
+function LinkImport({ trip, onPick }: { trip: Trip; onPick: (p: Place) => void }) {
+  const [url, setUrl] = useState('')
+  const lookup = useMutation({
+    mutationFn: () => api<LinkResult>(`/api/trips/${trip.id}/places/from-link`, { method: 'POST', body: { url } }),
+  })
+  const r = lookup.data
+  return (
+    <div className="field">
+      <label htmlFor="link-url">Or paste a link (Maps, TikTok, Instagram, a website)</label>
+      <div className="row" style={{ flexWrap: 'nowrap' }}>
+        <input id="link-url" type="url" style={{ flex: 1 }} value={url} maxLength={2000} placeholder="https://"
+          onChange={(e) => setUrl(e.target.value)} />
+        <button type="button" className="btn" disabled={!/^https?:\/\/./i.test(url) || lookup.isPending} onClick={() => lookup.mutate()}>
+          {lookup.isPending ? 'Reading…' : 'Look up'}
+        </button>
+      </div>
+      {errorText(lookup.error)}
+      {r?.message && <span role="status" style={{ fontWeight: 500, color: 'var(--ink-2)' }}>{r.message}</span>}
+      {r && r.candidates.length > 0 && (
+        <ul aria-label="Places from the link" style={{ listStyle: 'none', margin: 0, padding: 0, border: '1px solid var(--line)', borderRadius: 12 }}>
+          {r.candidates.map((p, i) => (
+            <li key={`${p.providerId}-${i}`}>
+              <button type="button" style={{ width: '100%', textAlign: 'left', border: 0, background: 'none', padding: '10px 12px', minHeight: 44 }}
+                onClick={() => { onPick(p); lookup.reset(); setUrl('') }}>
+                <strong style={{ display: 'block', fontSize: 14 }}>{p.name}</strong>
+                <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>{p.address || 'From the link'}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -162,7 +200,9 @@ export function AddDestinationDialog({ trip, day, onClose }: { trip: Trip; day: 
   return (
     <Modal title="Add destination" onClose={onClose}>
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <PlaceSearch label="Place" bias={bias} onPick={(p, text) => setPlace({ p, text })} />
+        <PlaceSearch label="Place" bias={bias} required={!place.p} onPick={(p, text) => setPlace({ p, text })} />
+        <LinkImport trip={trip} onPick={(p) => setPlace({ p, text: p.name })} />
+        {place.p && <p role="status" style={{ margin: 0, fontSize: 14 }}>Selected: <strong>{place.p.name}</strong>{place.p.address && ` · ${place.p.address}`}</p>}
         <div className="row" style={{ flexWrap: 'nowrap', alignItems: 'flex-end' }}>
           <div style={{ flex: 2 }}><DaySelect trip={trip} value={day} /></div>
           <label className="field" style={{ flex: 1 }}>Minutes<input name="duration" type="number" min={5} max={1440} defaultValue={60} /></label>
@@ -178,7 +218,9 @@ export function AddDestinationDialog({ trip, day, onClose }: { trip: Trip; day: 
   )
 }
 
-export function EditDestinationDialog({ trip, dest, onClose }: { trip: Trip; dest: Destination; onClose: () => void }) {
+export function EditDestinationDialog({ trip, dest, onClose, onMoreLikeThis }: {
+  trip: Trip; dest: Destination; onClose: () => void; onMoreLikeThis?: () => void
+}) {
   const qc = useQueryClient()
   const save = useSaveDestination(trip, dest.id, onClose)
   const remove = useMutation({
@@ -241,6 +283,9 @@ export function EditDestinationDialog({ trip, dest, onClose }: { trip: Trip; des
           <label className="field">Notes<textarea name="notes" rows={3} maxLength={2000} defaultValue={dest.notes ?? ''} /></label>
         </fieldset>
         {errorText(save.error ?? remove.error)}
+        {onMoreLikeThis && (
+          <button type="button" className="btn btn-soft" style={{ alignSelf: 'flex-start' }} onClick={onMoreLikeThis}>More like this</button>
+        )}
         {!readOnly && (
           <div className="spread">
             <button type="button" className="btn btn-ghost" onClick={() => remove.mutate()}>Remove</button>

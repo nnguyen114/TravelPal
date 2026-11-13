@@ -9,6 +9,7 @@ import type { Mode, Place, Trip } from './types'
 type Proposal =
   | { type: 'places'; places: { name: string; day_number: number }[] }
   | { type: 'optimize'; mode: Mode; day_number: number; instructions: string }
+  | { type: 'discover'; query: string; day_number: number }
 type Msg = { role: 'user' | 'assistant'; content: string; proposals: Proposal[] }
 
 const SUGGESTED = ['How full is Day 1?', 'Here are some places: …', 'Make Day 2 lighter']
@@ -82,7 +83,9 @@ function OptimizeProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type
 }
 
 /** On-demand trip copilot. Anything that would change the trip comes back as a button the traveler presses. */
-export function AssistantDrawer({ trip, onClose }: { trip: Trip; onClose: () => void }) {
+export function AssistantDrawer({ trip, onClose, onDiscover }: {
+  trip: Trip; onClose: () => void; onDiscover: (query: string, dayIndex: number | null) => void
+}) {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -152,7 +155,14 @@ export function AssistantDrawer({ trip, onClose }: { trip: Trip; onClose: () => 
             )}
             {m.proposals.map((p, j) => p.type === 'places'
               ? <PlacesProposal key={j} trip={trip} p={p} />
-              : <OptimizeProposal key={j} trip={trip} p={p} />)}
+              : p.type === 'optimize'
+                ? <OptimizeProposal key={j} trip={trip} p={p} />
+                : (
+                  <button key={j} className="btn btn-primary"
+                    onClick={() => onDiscover(p.query, p.day_number > 0 && p.day_number <= trip.dayCount ? p.day_number - 1 : null)}>
+                    Show suggestions: {p.query}
+                  </button>
+                ))}
           </div>
         ))}
         {error && <div role="alert" className="error">{error}</div>}
