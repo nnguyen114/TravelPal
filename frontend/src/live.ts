@@ -15,6 +15,7 @@ export function useTripLive(tripId: string | undefined) {
       qc.invalidateQueries({ queryKey: ['trip', tripId] })
       qc.invalidateQueries({ queryKey: ['destinations', tripId] })
       qc.invalidateQueries({ queryKey: ['events', tripId] })
+      qc.invalidateQueries({ queryKey: ['proposals', tripId] })
     }
     const connect = () =>
       readEvents(`/api/trips/${tripId}/stream`, (name) => name === 'changed' && refresh(), ctrl.signal)
