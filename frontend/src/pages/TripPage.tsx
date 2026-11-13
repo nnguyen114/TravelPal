@@ -2,16 +2,22 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { api } from '../api'
-import { AddDestinationDialog, EditDestinationDialog } from '../dialogs'
-import { LockIcon, Logo, PlusIcon } from '../icons'
+import { AddDestinationDialog, EditDestinationDialog, InviteDialog } from '../dialogs'
+import { LinkIcon, LockIcon, Logo, PlusIcon } from '../icons'
+import { useTripLive } from '../live'
 import { byDay, canEdit, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, toInput } from '../trip'
 import type { Destination, Trip } from '../types'
+import { ActivityTab, MembersTab } from './CollabTabs'
+
+type Tab = 'main' | 'destinations' | 'members' | 'activity'
+const TABS: [Tab, string, string][] = [['main', 'Main Trip', ''], ['destinations', 'Destinations', '/destinations'], ['members', 'Members', '/members'], ['activity', 'Activity', '/activity']]
 
 const TripMap = lazy(() => import('../map/TripMap').then((m) => ({ default: m.TripMap })))
 const AVATAR_BG = ['#FFD9A8', '#BFE6E1', '#D9D4FB', '#FDE7DF']
 
-function TripHeader({ trip, tab }: { trip: Trip; tab: 'main' | 'destinations' }) {
+function TripHeader({ trip, tab }: { trip: Trip; tab: Tab }) {
   const shown = trip.members.slice(0, 3)
+  const [inviting, setInviting] = useState(false)
   return (
     <header className="topbar">
       <div className="topbar-inner" style={{ paddingBottom: 0, flexDirection: 'column', alignItems: 'stretch' }}>
@@ -29,20 +35,25 @@ function TripHeader({ trip, tab }: { trip: Trip; tab: 'main' | 'destinations' })
               {trip.cities.map((c) => <span key={c.id} className="pill">{c.name}{c.locked && <LockIcon />}</span>)}
             </div>
           </div>
-          <div style={{ display: 'flex' }} aria-label={`${trip.members.length} members`}>
-            {shown.map((m, i) => (
-              <span key={m.userId} className="avatar" title={m.displayName} style={{ background: AVATAR_BG[i], marginLeft: i ? -8 : 0 }}>
-                {m.displayName.slice(0, 1).toUpperCase()}
-              </span>
-            ))}
-            {trip.members.length > 3 && <span className="avatar" style={{ background: 'var(--soft)', marginLeft: -8 }}>+{trip.members.length - 3}</span>}
+          <div className="row" style={{ gap: 14 }}>
+            <div style={{ display: 'flex' }} aria-label={`${trip.members.length} members`}>
+              {shown.map((m, i) => (
+                <span key={m.userId} className="avatar" title={m.displayName} style={{ background: AVATAR_BG[i], marginLeft: i ? -8 : 0 }}>
+                  {m.displayName.slice(0, 1).toUpperCase()}
+                </span>
+              ))}
+              {trip.members.length > 3 && <span className="avatar" style={{ background: 'var(--soft)', marginLeft: -8 }}>+{trip.members.length - 3}</span>}
+            </div>
+            {canEdit(trip) && <button className="btn" onClick={() => setInviting(true)}><LinkIcon /> Invite</button>}
           </div>
         </div>
         <nav aria-label="Trip sections" className="tabs">
-          <Link to={`/trips/${trip.id}`} aria-current={tab === 'main' ? 'page' : undefined}>Main Trip</Link>
-          <Link to={`/trips/${trip.id}/destinations`} aria-current={tab === 'destinations' ? 'page' : undefined}>Destinations</Link>
+          {TABS.map(([t, label, path]) => (
+            <Link key={t} to={`/trips/${trip.id}${path}`} aria-current={tab === t ? 'page' : undefined}>{label}</Link>
+          ))}
         </nav>
       </div>
+      {inviting && <InviteDialog trip={trip} onClose={() => setInviting(false)} />}
     </header>
   )
 }
@@ -253,8 +264,9 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
   )
 }
 
-export function TripPage({ tab }: { tab: 'main' | 'destinations' }) {
+export function TripPage({ tab }: { tab: Tab }) {
   const { tripId } = useParams()
+  useTripLive(tripId)
   const trip = useQuery({ queryKey: ['trip', tripId], queryFn: () => api<Trip>(`/api/trips/${tripId}`) })
   const destinations = useQuery({ queryKey: ['destinations', tripId], queryFn: () => api<Destination[]>(`/api/trips/${tripId}/destinations`) })
 
@@ -270,9 +282,10 @@ export function TripPage({ tab }: { tab: 'main' | 'destinations' }) {
   return (
     <>
       <TripHeader trip={trip.data} tab={tab} />
-      {tab === 'main'
-        ? <Itinerary trip={trip.data} destinations={destinations.data} />
-        : <DestinationsTab trip={trip.data} destinations={destinations.data} />}
+      {tab === 'main' && <Itinerary trip={trip.data} destinations={destinations.data} />}
+      {tab === 'destinations' && <DestinationsTab trip={trip.data} destinations={destinations.data} />}
+      {tab === 'members' && <MembersTab trip={trip.data} />}
+      {tab === 'activity' && <ActivityTab trip={trip.data} />}
     </>
   )
 }

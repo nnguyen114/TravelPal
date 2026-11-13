@@ -51,5 +51,5 @@ export const trip = (over: Partial<Trip> = {}): Trip => ({
 
 export const dest = (id: string, dayIndex: number | null, position: number | null, over: Partial<Destination> = {}): Destination => ({
   id, name: id, address: 'Harajuku, Tokyo', lat: 35.6, lng: 139.7, providerId: null, notes: null, durationMin: 90,
-  dayIndex, position, startTime: dayIndex === null ? null : '09:00:00', locked: false, flexibility: 'FLEXIBLE', ...over,
+  dayIndex, position, startTime: dayIndex === null ? null : '09:00:00', locked: false, flexibility: 'FLEXIBLE', version: 0, ...over,
 })

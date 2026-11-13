@@ -4,6 +4,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.Version;
 import java.time.LocalTime;
 import java.util.UUID;
 
@@ -27,11 +28,17 @@ public class Destination {
     @Enumerated(EnumType.STRING)
     private Flexibility flexibility = Flexibility.FLEXIBLE;
     private UUID createdBy;
+    @Version
+    private long version;
 
     protected Destination() {}
 
     Destination(UUID tripId, UUID createdBy, String providerId) {
-        this.id = UUID.randomUUID();
+        this(UUID.randomUUID(), tripId, createdBy, providerId);
+    }
+
+    Destination(UUID id, UUID tripId, UUID createdBy, String providerId) {
+        this.id = id;
         this.tripId = tripId;
         this.createdBy = createdBy;
         this.providerId = providerId;
@@ -69,4 +76,5 @@ public class Destination {
     public LocalTime getStartTime() { return startTime; }
     public boolean isLocked() { return locked; }
     public Flexibility getFlexibility() { return flexibility; }
+    public long getVersion() { return version; }
 }
