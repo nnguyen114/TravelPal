@@ -28,6 +28,10 @@ public class Destination {
     @Enumerated(EnumType.STRING)
     private Flexibility flexibility = Flexibility.FLEXIBLE;
     private UUID createdBy;
+    private LocalTime visitAfter;
+    private LocalTime visitBefore;
+    private boolean dayTrip;
+    private String hintsSource;
     @Version
     private long version;
 
@@ -57,6 +61,18 @@ public class Destination {
         this.flexibility = flexibility == null ? Flexibility.FLEXIBLE : flexibility;
     }
 
+    /** Returns true if anything changed. */
+    boolean hints(LocalTime after, LocalTime before, boolean dayTrip) {
+        boolean changed = !java.util.Objects.equals(after, visitAfter) || !java.util.Objects.equals(before, visitBefore) || dayTrip != this.dayTrip;
+        if (changed) {
+            this.visitAfter = after;
+            this.visitBefore = before;
+            this.dayTrip = dayTrip;
+            this.hintsSource = "USER";
+        }
+        return changed;
+    }
+
     void scheduleAt(Integer dayIndex, Integer position, LocalTime startTime) {
         schedule(dayIndex, position);
         this.startTime = startTime;
@@ -82,4 +98,8 @@ public class Destination {
     public boolean isLocked() { return locked; }
     public Flexibility getFlexibility() { return flexibility; }
     public long getVersion() { return version; }
+    public LocalTime getVisitAfter() { return visitAfter; }
+    public LocalTime getVisitBefore() { return visitBefore; }
+    public boolean isDayTrip() { return dayTrip; }
+    public String getHintsSource() { return hintsSource; }
 }

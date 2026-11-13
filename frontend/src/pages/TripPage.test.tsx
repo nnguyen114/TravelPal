@@ -20,7 +20,8 @@ const routes = (
 )
 const stops = [
   dest('Meiji Jingu', 0, 0), dest('Cat Street', 0, 1, { locked: true, startTime: '12:00:00' }), dest('Senso-ji', 2, 0),
-  dest('Golden Gai', null, null),
+  dest('Golden Gai', null, null, { visitAfter: '20:00:00', hintsSource: 'AI' }),
+  dest('Nikko', 2, 1, { dayTrip: true }),
 ]
 
 function api(over: Partial<Parameters<typeof trip>[0]> = {}) {
@@ -48,6 +49,21 @@ it('renders the day-by-day plan with header, locks, and unscheduled count', asyn
   expect(within(day1).getAllByText('Harajuku · about 1 hr 30 min')).toHaveLength(2)
   expect(within(screen.getByRole('article', { name: 'Day 2' })).getByText('Nothing planned yet.')).toBeInTheDocument()
   expect(screen.getByText('1 unscheduled place')).toBeInTheDocument()
+  expect(within(screen.getByRole('article', { name: 'Day 3' })).getByText(/Day trip$/)).toBeInTheDocument()
+})
+
+it('edits best time and day trip, showing when AI suggested them', async () => {
+  const calls = api()
+  renderAt('/trips/t1/destinations', routes)
+  await userEvent.click(await screen.findByRole('button', { name: /Golden Gai/ }))
+  expect(screen.getByText(/suggested by AI/)).toBeInTheDocument()
+  expect(screen.getByLabelText('Not before')).toHaveValue('20:00')
+  await userEvent.type(screen.getByLabelText('Done by'), '23:30')
+  await userEvent.click(screen.getByLabelText(/Day trip/))
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body)
+    .toMatchObject({ visitAfter: '20:00', visitBefore: '23:30', dayTrip: true }))
+  expect(calls.find((c) => c.method === 'PUT')?.body).not.toHaveProperty('hintsSource')
 })
 
 it('reorders a day with the move buttons', async () => {
@@ -117,11 +133,12 @@ it('destinations tab filters and schedules ideas', async () => {
   renderAt('/trips/t1/destinations', routes)
   await userEvent.click(await screen.findByRole('button', { name: 'Unscheduled · 1' }))
   expect(screen.getByText('Golden Gai')).toBeInTheDocument()
+  expect(screen.getByText('Unscheduled · Best after 20:00')).toBeInTheDocument()
   expect(screen.queryByText('Senso-ji')).not.toBeInTheDocument()
   await userEvent.selectOptions(screen.getByLabelText('Add Golden Gai to day'), '1')
   await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toMatchObject({ name: 'Golden Gai', dayIndex: 1 }))
 
-  await userEvent.click(screen.getByRole('button', { name: 'Scheduled · 3' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Scheduled · 4' }))
   expect(screen.getByText('Day 1 · Thu, Jun 10 · 12:00')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: /Add Destination/ }))
   expect(screen.getByLabelText('Day')).toHaveValue('')

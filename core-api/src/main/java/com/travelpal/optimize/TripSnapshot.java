@@ -56,6 +56,10 @@ public class TripSnapshot {
         m.put("startTime", x.getStartTime() == null ? null : x.getStartTime().format(HHMM));
         m.put("locked", x.isLocked());
         m.put("flexibility", x.getFlexibility().name());
+        m.put("visitAfter", x.getVisitAfter() == null ? null : x.getVisitAfter().format(HHMM));
+        m.put("visitBefore", x.getVisitBefore() == null ? null : x.getVisitBefore().format(HHMM));
+        m.put("dayTrip", x.isDayTrip());
+        m.put("hintsSource", x.getHintsSource());
         return m;
     }
 }

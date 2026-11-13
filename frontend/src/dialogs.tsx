@@ -182,6 +182,8 @@ export function EditDestinationDialog({ trip, dest, onClose }: { trip: Trip; des
       name: String(f.get('name')), dayIndex: dayValue(f), startTime: (f.get('startTime') as string) || null,
       durationMin: Number(f.get('duration')) || null, notes: (f.get('notes') as string) || null,
       locked: f.get('locked') === 'on', flexibility: f.get('flexibility') as Flexibility,
+      visitAfter: (f.get('visitAfter') as string) || null, visitBefore: (f.get('visitBefore') as string) || null,
+      dayTrip: f.get('dayTrip') === 'on',
     }))
   }
 
@@ -208,6 +210,19 @@ export function EditDestinationDialog({ trip, dest, onClose }: { trip: Trip; des
             <input type="checkbox" name="locked" defaultChecked={dest.locked} style={{ width: 20, height: 20 }} />
             Lock it (AI will never move it)
           </label>
+          <fieldset style={{ border: '1px solid var(--line)', borderRadius: 14, padding: '10px 14px 14px', margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <legend style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-2)', padding: '0 4px' }}>
+              Best time to visit{dest.hintsSource === 'AI' && <span className="muted" style={{ fontWeight: 500 }}> · suggested by AI</span>}
+            </legend>
+            <div className="row" style={{ flexWrap: 'nowrap' }}>
+              <label className="field" style={{ flex: 1 }}>Not before<input name="visitAfter" type="time" defaultValue={dest.visitAfter?.slice(0, 5) ?? ''} /></label>
+              <label className="field" style={{ flex: 1 }}>Done by<input name="visitBefore" type="time" defaultValue={dest.visitBefore?.slice(0, 5) ?? ''} /></label>
+            </div>
+            <label className="row" style={{ fontSize: 14, fontWeight: 600 }}>
+              <input type="checkbox" name="dayTrip" defaultChecked={dest.dayTrip} style={{ width: 20, height: 20 }} />
+              Day trip (gets a day of its own)
+            </label>
+          </fieldset>
           <label className="field">Notes<textarea name="notes" rows={3} maxLength={2000} defaultValue={dest.notes ?? ''} /></label>
         </fieldset>
         {errorText(save.error ?? remove.error)}

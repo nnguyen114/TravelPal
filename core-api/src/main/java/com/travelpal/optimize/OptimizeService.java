@@ -108,10 +108,17 @@ public class OptimizeService {
         previews.findById(id).filter(p -> p.getStatus() == OptimizationPreview.Status.PENDING).ifPresent(p -> {
             if ("READY".equals(node.path("status").asString())) {
                 p.complete(OptimizationPreview.Status.READY, json.writeValueAsString(node.path("result")), null);
+                destinations.suggestHints(p.getTripId(), node.path("result").path("hints").valueStream().map(h -> new DestinationService.Hint(
+                    UUID.fromString(h.path("id").asString()), time(h.path("visitAfter")), time(h.path("visitBefore")),
+                    h.path("dayTrip").asBoolean())).toList());
             } else {
                 p.complete(OptimizationPreview.Status.FAILED, null, node.path("error").asString("The optimizer failed."));
             }
         });
+    }
+
+    private static java.time.LocalTime time(JsonNode n) {
+        return n.isNull() || n.isMissingNode() ? null : java.time.LocalTime.parse(n.asString());
     }
 
     @Transactional(readOnly = true)

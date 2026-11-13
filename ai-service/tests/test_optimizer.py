@@ -142,3 +142,49 @@ def test_helpers():
     assert km(a, a) == 2.0
     pts = [Stop(str(i), str(i), 35.0, 139.0 + x, 60, None, None, None, False) for i, x in enumerate([0, 0.3, 0.1, 0.2])]
     assert [s.id for s in best_order(pts)] in (["0", "2", "3", "1"], ["1", "3", "2", "0"])
+
+
+def test_bar_district_goes_to_the_evening_even_past_day_end():
+    gai = dest("Golden Gai", 35.6938, 139.7046, visitAfter="20:00", durationMin=120)
+    day = [dest(*p) for p in SHINJUKU if p[0] != "Golden Gai"]
+    r = by_id(optimize(job([gai] + day, days=1)))
+    assert r["Golden Gai"]["startTime"] >= "20:00"
+    assert r["Golden Gai"]["position"] == 3  # last stop of the day
+    assert r["Shinjuku Gyoen"]["startTime"] < "12:00"
+
+
+def test_evening_place_waits_for_dinner_and_morning_market_goes_first():
+    dinner = dest("Dinner", 35.6595, 139.7005, dayIndex=0, position=0, startTime="19:00", locked=True, durationMin=90)
+    bar = dest("Bar", 35.6600, 139.7010, visitAfter="20:00")
+    market = dest("Tsukiji", 35.6655, 139.7707, visitBefore="11:00")
+    out = optimize(job([dinner, bar, market, dest(*HARAJUKU[0])], days=1))
+    r = by_id(out)
+    assert r["Tsukiji"]["position"] == 0 and r["Tsukiji"]["startTime"] == "09:00"
+    assert r["Bar"]["startTime"] >= "20:30" and r["Bar"]["position"] > r["Dinner"]["position"]
+    assert {t["id"] for t in out["timed"]} == {"Bar", "Tsukiji"}
+
+
+def test_place_that_cannot_meet_its_window_does_not_fit():
+    late_market = dest("Market", 35.6655, 139.7707, visitBefore="09:30", durationMin=60)
+    out = optimize(job([late_market], days=1))  # Balanced day starts 09:00, so it would end 10:00
+    assert out["unscheduled"] == ["Market"]
+
+
+def test_far_places_become_day_trips_with_their_own_day():
+    nikko = [dest("Toshogu", 36.7581, 139.5988), dest("Kegon Falls", 36.7380, 139.5017)]
+    out = optimize(job(nikko + [dest(*p) for p in HARAJUKU + ASAKUSA], days=3))
+    r = by_id(out)
+    trip_day = r["Toshogu"]["dayIndex"]
+    assert r["Kegon Falls"]["dayIndex"] == trip_day
+    assert all(r[p[0]]["dayIndex"] != trip_day for p in HARAJUKU + ASAKUSA)
+    assert set(out["dayTrips"]) == {"Toshogu", "Kegon Falls"}
+    assert r["Toshogu"]["startTime"] == "09:00"
+
+
+def test_tagged_day_trip_without_free_day_needs_review():
+    kamakura = dest("Kamakura", 35.3192, 139.5467, dayTrip=True)
+    dinner = dest("Dinner", 35.6595, 139.7005, dayIndex=0, position=0, startTime="19:00", locked=True)
+    out = optimize(job([kamakura, dinner], days=1))
+    assert by_id(out)["Kamakura"]["dayIndex"] is None
+    assert out["needsReview"] == [{"id": "Kamakura", "reason": "Day trip needs a free day of its own"}]
+    assert out["unscheduled"] == []

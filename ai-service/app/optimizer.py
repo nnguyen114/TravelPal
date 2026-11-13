@@ -16,6 +16,11 @@ MODES = {
     "PACKED": (8, 8 * 60 + 30, 21 * 60),
 }
 DEFAULT_DURATION = 60
+DAY_TRIP_MINUTES = 360
+# A located place farther than this from its nearest trip city is treated as a day trip and gets its own day.
+DAY_TRIP_KM = 35
+EVENING = 16 * 60
+MORNING_END = 13 * 60
 # ponytail: flat 12 min/km (min 10) between stops; replace with a real matrix if travel times start to matter.
 MIN_PER_KM = 12
 
@@ -32,6 +37,18 @@ class Stop:
     start: int | None  # minutes after midnight
     pinned: bool  # locked or FIXED: never moves
     movable: bool = False
+    after: int | None = None  # earliest sensible start, e.g. 19:00 for a bar district
+    before: int | None = None  # latest sensible end, e.g. 11:00 for a morning market
+    day_trip: bool = False
+
+    @property
+    def bucket(self) -> int:
+        """Morning-only places go first in a day, evening places last, everything else between."""
+        if self.before is not None and self.before <= MORNING_END:
+            return 0
+        if self.after is not None and self.after >= EVENING:
+            return 2
+        return 1
 
     @property
     def located(self) -> bool:
@@ -126,6 +143,10 @@ def kmeans(stops: list[Stop], k: int) -> list[list[Stop]]:
     return [g for g in groups if g]
 
 
+def job_duration(job: dict, sid: str) -> int | None:
+    return next((d.get("durationMin") for d in job["destinations"] if d["id"] == sid), None)
+
+
 def day_cities(job: dict) -> list[dict | None]:
     """The city allocated to each day: fixed dates first, else the first undated city, else the first city."""
     start = date.fromisoformat(job["trip"]["startDate"])
@@ -155,7 +176,10 @@ def optimize(job: dict, constraints: Constraints | None = None) -> dict:
             if frag and frag in d["name"].lower():
                 dur += extra
         stops.append(Stop(d["id"], d["name"], d.get("lat"), d.get("lng"), dur, d.get("dayIndex"), d.get("position"),
-                          hhmm(d.get("startTime")), d.get("locked") or d.get("flexibility") == "FIXED"))
+                          hhmm(d.get("startTime")), d.get("locked") or d.get("flexibility") == "FIXED",
+                          after=hhmm(d.get("visitAfter")), before=hhmm(d.get("visitBefore")), day_trip=bool(d.get("dayTrip"))))
+        if stops[-1].day_trip and d.get("durationMin") is None:
+            stops[-1].duration = DAY_TRIP_MINUTES
     before = {s.id: (s.day, s.position, s.start) for s in stops}
 
     for s in stops:
@@ -172,6 +196,17 @@ def optimize(job: dict, constraints: Constraints | None = None) -> dict:
     # 1. Which days each movable stop may go on (respecting city/day allocation).
     cities = day_cities(job)
     located_cities = {c["name"]: c for c in cities if c and c.get("lat") is not None}
+
+    def nearest_city_km(s: Stop) -> float | None:
+        if not s.located or not located_cities:
+            return None
+        return min(km(s, point((city["lat"], city["lng"]))) for city in located_cities.values())
+
+    for s in stops:  # far from every trip city -> a day trip, whatever the tags say
+        if (dist := nearest_city_km(s)) is not None and dist > DAY_TRIP_KM and not s.day_trip:
+            s.day_trip = True
+            if s.duration < DAY_TRIP_MINUTES and not job_duration(job, s.id):
+                s.duration = DAY_TRIP_MINUTES
 
     def eligible_days(s: Stop) -> list[int]:
         if scope == "DAY":
@@ -192,12 +227,33 @@ def optimize(job: dict, constraints: Constraints | None = None) -> dict:
     def capacity(day: int) -> int:
         return max(1, cap - (1 if day in c.slower_days else 0))
 
+    reserved: set[int] = set()
     if scope == "DAY":
         plan[job["dayIndex"]] += movable
     else:
+        # Day trips first: each group of nearby day-trip places takes a day of its own, emptiest days first.
+        groups: list[list[Stop]] = []
+        for s in (s for s in movable if s.day_trip and s.located):
+            g = next((g for g in groups if km(s, g[0]) < 25), None)
+            g.append(s) if g else groups.append([s])
+        for g in groups:
+            free = [d for d in eligible_days(g[0]) if d not in reserved and not any(x.pinned and x.start is not None for x in plan[d])]
+            if scope == "SELECTION":
+                free = [d for d in free if not plan[d]] or free
+            if not free:
+                for s in g:
+                    s.day = None
+                    needs_review.append({"id": s.id, "reason": "Day trip needs a free day of its own"})
+                continue
+            day = min(free, key=lambda d: (len(plan[d]), -d))
+            plan[day] += g
+            reserved.add(day)
+        city_stops = [s for s in movable if not (s.day_trip and s.located)]
+
         by_days: dict[tuple[int, ...], list[Stop]] = {}
-        for s in movable:
-            by_days.setdefault(tuple(eligible_days(s)), []).append(s)
+        for s in city_stops:
+            days = [d for d in eligible_days(s) if d not in reserved] or eligible_days(s)
+            by_days.setdefault(tuple(days), []).append(s)
         for days, group in by_days.items():
             if scope == "SELECTION":
                 for s in group:
@@ -226,7 +282,7 @@ def optimize(job: dict, constraints: Constraints | None = None) -> dict:
             while len(plan[d]) > capacity(d) and any(s.movable for s in plan[d]):
                 s = max((s for s in plan[d] if s.movable), key=lambda s: dist_to_day(s, d))
                 plan[d].remove(s)
-                room = [o for o in eligible_days(s) if o != d and len(plan[o]) < capacity(o)]
+                room = [o for o in eligible_days(s) if o != d and o not in reserved and len(plan[o]) < capacity(o)]
                 if room and scope == "TRIP":
                     plan[min(room, key=lambda o: dist_to_day(s, o))].append(s)
                 else:
@@ -235,7 +291,8 @@ def optimize(job: dict, constraints: Constraints | None = None) -> dict:
     # 3. Order and time each day around fixed-time plans.
     result: dict[str, tuple[int | None, int | None, int | None]] = {}
     planned = {s.id for day in plan.values() for s in day}
-    overflow: set[str] = {s.id for s in movable if s.id not in planned}
+    flagged = {n["id"] for n in needs_review}
+    overflow: set[str] = {s.id for s in movable if s.id not in planned and s.id not in flagged}
     for d in range(n_days):
         day_stops = plan[d]
         touched = scope != "DAY" or d == job.get("dayIndex")
@@ -244,23 +301,30 @@ def optimize(job: dict, constraints: Constraints | None = None) -> dict:
                 result[s.id] = before[s.id]
             continue
         anchors = sorted([s for s in day_stops if s.pinned and s.start is not None], key=lambda s: s.start)
-        loose = best_order([s for s in day_stops if not (s.pinned and s.start is not None)])
+        # Route order, then morning-only places first and evening places last (stable, so routing holds within each).
+        loose = sorted(best_order([s for s in day_stops if not (s.pinned and s.start is not None)]), key=lambda s: s.bucket)
         start = day_start + (60 if d in c.slower_days else 0)
         t, prev, seq = start, None, []
         queue = list(loose)
         while queue or anchors:
-            if anchors and (not queue or t + travel(prev, queue[0]) + queue[0].duration + travel(queue[0], anchors[0]) > anchors[0].start):
+            nxt = queue[0] if queue else None
+            if anchors and (nxt is None or max(t + travel(prev, nxt), nxt.after or 0) + nxt.duration + travel(nxt, anchors[0]) > anchors[0].start):
                 a = anchors.pop(0)
                 seq.append((a, a.start))
                 t, prev = max(t, a.start + a.duration), a
                 continue
             s = queue.pop(0)
-            st = t + travel(prev, s)
-            if st + s.duration > day_end and s.movable and scope != "DAY":
+            st = max(t + travel(prev, s), s.after or 0)  # wait for a place's sensible time rather than visit too early
+            # A place's own window sets its limit: an evening bar may run past the usual day end, a morning market can't.
+            limit = s.before if s.before is not None else day_end
+            if s.after is not None and s.after >= EVENING and s.before is None:
+                limit = max(day_end, 24 * 60)
+            if st + s.duration > limit and s.movable and scope != "DAY":
                 overflow.add(s.id)
                 continue
-            if st + s.duration > day_end:
-                needs_review.append({"id": s.id, "reason": f"Runs past {fmt(day_end)} at this pace"})
+            if st + s.duration > limit:
+                needs_review.append({"id": s.id, "reason": f"Runs past {fmt(min(limit, 24 * 60 - 1))}" + (
+                    " at this pace" if s.before is None else ", later than its best time")})
             seq.append((s, st))
             t, prev = st + s.duration, s
         for pos, (s, st) in enumerate(seq):
@@ -284,7 +348,11 @@ def optimize(job: dict, constraints: Constraints | None = None) -> dict:
         elif day is not None and (day, pos) != before[s.id][:2]:
             moved.append(s.id)
     scheduled = sum(1 for i in items if i["dayIndex"] is not None)
+    final_day = {i["id"]: i["dayIndex"] for i in items}
     return {
+        "dayTrips": [s.id for s in stops if s.day_trip and final_day[s.id] is not None],
+        "timed": [{"id": s.id, "after": fmt(s.after) if s.after is not None else None, "before": fmt(s.before) if s.before is not None else None}
+                  for s in stops if (s.after is not None or s.before is not None) and final_day[s.id] is not None],
         "items": items,
         "moved": moved,
         "added": added,

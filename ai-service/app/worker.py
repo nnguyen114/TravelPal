@@ -25,8 +25,20 @@ def queue_url(sqs, name: str) -> str:
 
 
 def handle(job: dict) -> dict:
+    by_id = {d["id"]: d for d in job["destinations"]}
+    untagged = {i for i, d in by_id.items() if not d.get("hintsSource")}
+    hints = claude.place_hints(job)
+    for i, h in hints.items():
+        by_id[i].update(h)
     constraints = claude.parse_constraints(job.get("instructions"), job)
     result = optimize(job, constraints or Constraints())
+    # New tags (Claude's, or "too far from the city" day trips) go back to core-api, which saves them on
+    # untagged places only, so they show in the app and can be corrected there.
+    result["hints"] = [
+        {"id": i, "visitAfter": by_id[i].get("visitAfter"), "visitBefore": by_id[i].get("visitBefore"),
+         "dayTrip": bool(by_id[i].get("dayTrip")) or i in result["dayTrips"]}
+        for i in sorted(untagged) if i in hints or i in result["dayTrips"]
+    ]
     result.update(claude.explain(job, result))
     result["constraintsUnderstood"] = constraints is not None
     return result

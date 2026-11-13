@@ -8,7 +8,7 @@ import { useTripLive } from '../live'
 import { AskAiButton, AssistantDrawer } from '../assistant'
 import { PaceSwitch, useOptimize } from '../optimize'
 import { SparkleIcon } from '../icons'
-import { byDay, canEdit, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, toInput } from '../trip'
+import { bestTime, byDay, canEdit, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, toInput } from '../trip'
 import type { Destination, Mode, Trip } from '../types'
 import { ActivityTab, MembersTab } from './CollabTabs'
 
@@ -104,7 +104,7 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
             <button className="stop-main" onClick={() => onSelect(s.id)} onDoubleClick={() => onEdit(s)}>
               <span style={{ display: 'block', fontSize: 15, fontWeight: 700 }}>{s.name}</span>
               <span className="muted" style={{ display: 'block', fontSize: 13, marginTop: 2 }}>
-                {[s.address?.split(',')[0], s.durationMin && `about ${formatDuration(s.durationMin)}`].filter(Boolean).join(' · ')}
+                {[s.address?.split(',')[0], s.durationMin && `about ${formatDuration(s.durationMin)}`, bestTime(s)].filter(Boolean).join(' · ')}
               </span>
             </button>
             <span className="stop-actions">
@@ -258,7 +258,8 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
             <button className="stop-main" onClick={() => setEditing(d)}>
               <span style={{ display: 'block', fontWeight: 700 }}>{d.name}</span>
               <span className="muted" style={{ display: 'block', fontSize: 13 }}>
-                {d.dayIndex === null ? 'Unscheduled' : `Day ${d.dayIndex + 1} · ${formatDay(dayDate(trip, d.dayIndex))}${d.startTime ? ` · ${d.startTime.slice(0, 5)}` : ''}`}
+                {[d.dayIndex === null ? 'Unscheduled' : `Day ${d.dayIndex + 1} · ${formatDay(dayDate(trip, d.dayIndex))}${d.startTime ? ` · ${d.startTime.slice(0, 5)}` : ''}`,
+                  bestTime(d)].filter(Boolean).join(' · ')}
               </span>
             </button>
             {d.dayIndex === null && canEdit(trip) && (

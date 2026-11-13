@@ -35,7 +35,8 @@ async def test_streams_text_and_caches_trip_context():
     assert call["cache_control"] == {"type": "ephemeral"} and call["fallbacks"] == "default"
     assert call["system"][1]["text"].startswith("<trip>{")
     ctx = json.loads(call["system"][1]["text"][6:-7])
-    assert ctx["places"][0] == {"name": "Meiji Jingu", "day": 1, "time": None, "minutes": 90, "locked": False, "address": None}
+    assert ctx["places"][0] == {"name": "Meiji Jingu", "day": 1, "time": None, "minutes": 90, "locked": False, "address": None,
+                                 "bestAfter": None, "bestBefore": None, "dayTrip": False}
     assert "id" not in ctx["places"][0] and "dayIndex" not in call["system"][1]["text"]
     assert {t["name"] for t in call["tools"]} == {"propose_places", "propose_optimization", "check_fit"}
 

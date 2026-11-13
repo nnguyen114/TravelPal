@@ -134,6 +134,27 @@ class OptimizeApiTest extends IntegrationTest {
     }
 
     @Test
+    void aiTimingHintsAreSavedOnUntaggedPlacesOnly() throws Exception {
+        mvc.perform(json(put(base + "/destinations/" + b), who,
+            "{\"name\":\"Idea\",\"lat\":35.66,\"lng\":139.70,\"visitAfter\":\"15:00\",\"version\":0}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.hintsSource").value("USER"));
+        String id = request("{\"mode\":\"BALANCED\",\"scope\":\"TRIP\"}");
+        String job = takeJob(id);
+        assertThat((String) JsonPath.read(job, "$.destinations[?(@.name=='Idea')].visitAfter").toString()).contains("15:00");
+        answer("""
+            {"previewId":"%s","status":"READY","result":{"items":[],"scheduled":0,"total":0,"hints":[
+              {"id":"%s","visitAfter":"20:00","visitBefore":null,"dayTrip":false},
+              {"id":"%s","visitAfter":"21:00","visitBefore":null,"dayTrip":true}]}}""".formatted(id, a, b));
+        awaitStatus(id, "READY");
+        mvc.perform(auth(get(base + "/destinations"), who))
+            .andExpect(jsonPath("$[?(@.name=='Senso-ji')].visitAfter").value("20:00:00"))
+            .andExpect(jsonPath("$[?(@.name=='Senso-ji')].hintsSource").value("AI"))
+            .andExpect(jsonPath("$[?(@.name=='Senso-ji')].version").value(0))       // editors' versions untouched
+            .andExpect(jsonPath("$[?(@.name=='Idea')].visitAfter").value("15:00:00"))  // the traveler's choice wins
+            .andExpect(jsonPath("$[?(@.name=='Idea')].dayTrip").value(false));
+    }
+
+    @Test
     void stalePreviewCannotBeApplied() throws Exception {
         String id = request("{\"mode\":\"BALANCED\",\"scope\":\"TRIP\"}");
         takeJob(id);

@@ -11,9 +11,11 @@ export type Destination = {
   id: string; name: string; address: string | null; lat: number | null; lng: number | null; providerId: string | null
   notes: string | null; durationMin: number | null; dayIndex: number | null; position: number | null
   startTime: string | null; locked: boolean; flexibility: Flexibility; version: number
+  visitAfter: string | null; visitBefore: string | null; dayTrip: boolean; hintsSource: 'AI' | 'USER' | null
 }
 /** POST omits version; PUT must send the version the editor saw. */
-export type DestinationInput = Omit<Destination, 'id' | 'position' | 'version'> & { version?: number }
+export type DestinationInput = Omit<Destination, 'id' | 'position' | 'version' | 'hintsSource' | 'visitAfter' | 'visitBefore' | 'dayTrip'>
+  & { version?: number; visitAfter?: string | null; visitBefore?: string | null; dayTrip?: boolean }
 export type HistoryEntry = {
   id: number; actorId: string | null; actorName: string | null; type: string; summary: string; createdAt: string
   undoable: boolean; undone: boolean

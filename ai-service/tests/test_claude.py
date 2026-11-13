@@ -66,3 +66,37 @@ def test_explain_uses_claude_and_falls_back_on_errors(with_key, monkeypatch):
 def test_client_is_created_once(with_key, monkeypatch):
     monkeypatch.setattr(claude, "_client", None)
     assert claude.client() is claude.client()
+
+
+HINT_JOB = {"trip": {"dayCount": 2, "cities": [{"name": "Tokyo"}]}, "destinations": [
+    {"id": "g", "name": "Golden Gai", "address": "Kabukicho"}, {"id": "t", "name": "Tsukiji"},
+    {"id": "n", "name": "Nikko"}, {"id": "u", "name": "User tagged", "hintsSource": "USER"}]}
+
+
+def test_place_hints_only_for_untagged_and_validated(with_key, monkeypatch):
+    fake = use(monkeypatch, FakeClient(message(text(json.dumps({"places": [
+        {"n": 0, "visit_after": "19:00", "visit_before": "", "day_trip": False},
+        {"n": 1, "visit_after": "", "visit_before": "11:00", "day_trip": False},
+        {"n": 2, "visit_after": "18:00", "visit_before": "09:00", "day_trip": True},
+        {"n": 7, "visit_after": "", "visit_before": "", "day_trip": True}]})))))
+    hints = claude.place_hints(HINT_JOB)
+    assert hints == {"g": {"visitAfter": "19:00", "visitBefore": None, "dayTrip": False},
+                     "t": {"visitAfter": None, "visitBefore": "11:00", "dayTrip": False},
+                     "n": {"visitAfter": "18:00", "visitBefore": None, "dayTrip": True}}
+    assert "User tagged" not in fake.calls[0]["messages"][0]["content"]
+
+
+def test_place_hints_skip_without_key_or_work(monkeypatch):
+    assert claude.place_hints(HINT_JOB) == {}
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    assert claude.place_hints({"trip": {"cities": []}, "destinations": [{"id": "u", "name": "x", "hintsSource": "AI"}]}) == {}
+    use(monkeypatch, FakeClient(message(text("{}"), stop_reason="refusal")))
+    assert claude.place_hints(HINT_JOB) == {}
+
+
+def test_fallback_notes_mention_day_trips_and_timing():
+    result = {**RESULT, "dayTrips": ["a"], "timed": [{"id": "b", "after": "19:00", "before": None}, {"id": "a", "after": None, "before": "11:00"}]}
+    texts = [n["text"] for n in claude.explain(JOB, result)["notes"]]
+    assert "teamLab Planets: planned as a day trip on a day of its own." in texts
+    assert "Senso-ji is scheduled after 19:00, when it makes sense to go." in texts
+    assert "teamLab Planets is scheduled before 11:00, when it makes sense to go." in texts

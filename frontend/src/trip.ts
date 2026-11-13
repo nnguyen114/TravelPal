@@ -37,6 +37,16 @@ export function formatDuration(min: number | null): string {
   return h ? `${h} hr${m ? ` ${m} min` : ''}` : `${m} min`
 }
 
+/** "Day trip", "Best after 20:00", "Best before 11:00" or "Best 10:00–16:00"; empty when untagged. */
+export function bestTime(d: Pick<Destination, 'visitAfter' | 'visitBefore' | 'dayTrip'>): string {
+  const t = (x: string | null) => x?.slice(0, 5)
+  if (d.dayTrip) return 'Day trip'
+  if (d.visitAfter && d.visitBefore) return `Best ${t(d.visitAfter)}–${t(d.visitBefore)}`
+  if (d.visitAfter) return `Best after ${t(d.visitAfter)}`
+  if (d.visitBefore) return `Best before ${t(d.visitBefore)}`
+  return ''
+}
+
 export function byDay(trip: Trip, destinations: Destination[]): Destination[][] {
   const days: Destination[][] = Array.from({ length: trip.dayCount }, () => [])
   for (const d of destinations) if (d.dayIndex !== null && d.dayIndex < trip.dayCount) days[d.dayIndex].push(d)
@@ -44,7 +54,7 @@ export function byDay(trip: Trip, destinations: Destination[]): Destination[][] 
 }
 
 export function toInput(d: Destination, patch: Partial<DestinationInput> = {}): DestinationInput {
-  const { id: _id, position: _p, ...rest } = d
+  const { id: _id, position: _p, hintsSource: _h, ...rest } = d
   return { ...rest, ...patch }
 }
 

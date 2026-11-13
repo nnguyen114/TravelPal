@@ -69,6 +69,8 @@ RULES = """You are the trip assistant inside a collaborative travel planner. You
   The traveler confirms; say so plainly ("I've put a button below...").
 - Keep answers short. When you state something, make clear whether it's a suggestion, verified from the trip data,
   or uncertain (e.g. opening hours you can't confirm).
+- Respect sensible times: bestAfter/bestBefore say when a place is worth visiting (a bar district in the evening,
+  a market in the morning); dayTrip places take a day of their own.
 - Optimization is by geographic convenience only. Don't give transit, walking or driving directions or travel times.
 - Don't recommend new places unless the traveler asks for recommendations.
 - Write plain text for a small chat panel: no markdown, no headings, no bullet symbols. Talk only to the traveler;
@@ -81,6 +83,7 @@ def trip_context(trip: dict) -> str:
     places = [{
         "name": d["name"], "day": d["dayIndex"] + 1 if d.get("dayIndex") is not None else None,
         "time": d.get("startTime"), "minutes": d.get("durationMin"), "locked": d.get("locked", False), "address": d.get("address"),
+        "bestAfter": d.get("visitAfter"), "bestBefore": d.get("visitBefore"), "dayTrip": bool(d.get("dayTrip")),
     } for d in sorted(trip["destinations"], key=lambda d: (d.get("dayIndex") is None, d.get("dayIndex") or 0, d.get("position") or 0))]
     return json.dumps({"trip": trip["trip"], "places": places}, ensure_ascii=False, sort_keys=True)
 

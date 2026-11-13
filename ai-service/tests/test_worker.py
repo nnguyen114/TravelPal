@@ -46,3 +46,18 @@ def test_background_loop_starts_and_stops(sqs, monkeypatch):
     monkeypatch.setattr(stop, "wait", lambda s: None)
     worker.start(stop).join(timeout=5)
     assert len(calls) == 2
+
+
+def test_hints_from_claude_and_distance_are_returned_for_untagged_places(monkeypatch):
+    job = {"previewId": "p", "mode": "BALANCED", "scope": "TRIP",
+           "trip": {"startDate": "2027-06-10", "dayCount": 2, "cities": [{"name": "Tokyo", "lat": 35.68, "lng": 139.76}]},
+           "destinations": [{"id": "gai", "name": "Golden Gai", "lat": 35.6938, "lng": 139.7046},
+                            {"id": "nikko", "name": "Toshogu", "lat": 36.7581, "lng": 139.5988},
+                            {"id": "mine", "name": "Mine", "lat": 35.68, "lng": 139.70, "hintsSource": "USER", "visitAfter": "15:00"}]}
+    monkeypatch.setattr(worker.claude, "place_hints", lambda j: {"gai": {"visitAfter": "20:00", "visitBefore": None, "dayTrip": False}})
+    out = worker.handle(job)
+    assert out["hints"] == [{"id": "gai", "visitAfter": "20:00", "visitBefore": None, "dayTrip": False},
+                            {"id": "nikko", "visitAfter": None, "visitBefore": None, "dayTrip": True}]
+    items = {i["id"]: i for i in out["items"]}
+    assert items["gai"]["startTime"] >= "20:00"
+    assert items["nikko"]["dayIndex"] != items["gai"]["dayIndex"]

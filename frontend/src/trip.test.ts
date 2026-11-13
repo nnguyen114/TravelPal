@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { byDay, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, toInput } from './trip'
+import { bestTime, byDay, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, toInput } from './trip'
 import type { City, Destination, Trip } from './types'
 
 const city = (name: string, startDate: string | null = null, endDate: string | null = null): City =>
@@ -7,6 +7,7 @@ const city = (name: string, startDate: string | null = null, endDate: string | n
 const dest = (id: string, dayIndex: number | null, position: number | null): Destination => ({
   id, name: id, address: null, lat: null, lng: null, providerId: null, notes: null, durationMin: 60,
   dayIndex, position, startTime: null, locked: false, flexibility: 'FLEXIBLE', version: 0,
+  visitAfter: null, visitBefore: null, dayTrip: false, hintsSource: null,
 })
 
 describe('trip helpers', () => {
@@ -22,6 +23,15 @@ describe('trip helpers', () => {
     expect(cityForDay(cities, '2027-06-15')?.name).toBe('Kyoto')
     expect(cityForDay(cities, '2027-06-10')?.name).toBe('Tokyo')
     expect(cityForDay([city('Osaka', '2027-06-01', '2027-06-02')], '2027-06-10')?.name).toBe('Osaka')
+  })
+
+  it('describes best times', () => {
+    const tag = { visitAfter: null, visitBefore: null, dayTrip: false }
+    expect(bestTime(tag)).toBe('')
+    expect(bestTime({ ...tag, dayTrip: true, visitAfter: '09:00:00' })).toBe('Day trip')
+    expect(bestTime({ ...tag, visitAfter: '20:00:00' })).toBe('Best after 20:00')
+    expect(bestTime({ ...tag, visitBefore: '11:00:00' })).toBe('Best before 11:00')
+    expect(bestTime({ ...tag, visitAfter: '10:00:00', visitBefore: '16:00:00' })).toBe('Best 10:00–16:00')
   })
 
   it('formats durations', () => {
