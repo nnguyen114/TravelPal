@@ -6,7 +6,7 @@ const city = (name: string, startDate: string | null = null, endDate: string | n
   ({ id: name, name, lat: null, lng: null, startDate, endDate, locked: false })
 const dest = (id: string, dayIndex: number | null, position: number | null): Destination => ({
   id, name: id, address: null, lat: null, lng: null, providerId: null, notes: null, durationMin: 60,
-  dayIndex, position, startTime: null, locked: false, flexibility: 'FLEXIBLE',
+  dayIndex, position, startTime: null, locked: false, flexibility: 'FLEXIBLE', version: 0,
 })
 
 describe('trip helpers', () => {

@@ -14,6 +14,8 @@ interface TripMemberRepository extends JpaRepository<TripMember, TripMember.Key>
 
     List<TripMember> findByUserId(UUID userId);
 
+    long countByTripIdAndRole(UUID tripId, TripRole role);
+
     @Query("select m.tripId, count(m) from TripMember m where m.tripId in ?1 group by m.tripId")
     List<Object[]> countByTrip(Collection<UUID> tripIds);
 

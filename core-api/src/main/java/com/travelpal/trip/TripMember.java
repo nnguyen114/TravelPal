@@ -30,4 +30,5 @@ public class TripMember {
     public UUID getTripId() { return tripId; }
     public UUID getUserId() { return userId; }
     public TripRole getRole() { return role; }
+    void setRole(TripRole role) { this.role = role; }
 }

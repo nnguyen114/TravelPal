@@ -30,7 +30,7 @@ public class DestinationController {
                                      @Min(-90) @Max(90) Double lat, @Min(-180) @Max(180) Double lng,
                                      @Size(max = 120) String providerId, @Size(max = 2000) String notes,
                                      @Min(5) @Max(1440) Integer durationMin, Integer dayIndex, LocalTime startTime,
-                                     boolean locked, Flexibility flexibility) {
+                                     boolean locked, Flexibility flexibility, Long version) {
         DestinationService.Input input() {
             return new DestinationService.Input(name, address, lat, lng, providerId, notes, durationMin, dayIndex, startTime, locked, flexibility);
         }
@@ -38,10 +38,10 @@ public class DestinationController {
     public record ReorderRequest(@NotNull @Size(max = 200) List<UUID> ids) {}
     public record DestinationDto(UUID id, String name, String address, Double lat, Double lng, String providerId, String notes,
                                  Integer durationMin, Integer dayIndex, Integer position, LocalTime startTime, boolean locked,
-                                 Flexibility flexibility) {
+                                 Flexibility flexibility, long version) {
         static DestinationDto of(Destination d) {
             return new DestinationDto(d.getId(), d.getName(), d.getAddress(), d.getLat(), d.getLng(), d.getProviderId(), d.getNotes(),
-                d.getDurationMin(), d.getDayIndex(), d.getPosition(), d.getStartTime(), d.isLocked(), d.getFlexibility());
+                d.getDurationMin(), d.getDayIndex(), d.getPosition(), d.getStartTime(), d.isLocked(), d.getFlexibility(), d.getVersion());
         }
     }
 
@@ -65,13 +65,19 @@ public class DestinationController {
     @PutMapping("/destinations/{id}")
     DestinationDto update(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId, @PathVariable UUID id,
                           @Valid @RequestBody DestinationRequest req) {
-        return DestinationDto.of(service.update(Auth.userId(jwt), tripId, id, req.input()));
+        return DestinationDto.of(service.update(Auth.userId(jwt), tripId, id, req.version(), req.input()));
     }
 
     @DeleteMapping("/destinations/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void delete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId, @PathVariable UUID id) {
         service.delete(Auth.userId(jwt), tripId, id);
+    }
+
+    @PostMapping("/events/{eventId}/undo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void undo(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId, @PathVariable long eventId) {
+        service.undo(Auth.userId(jwt), tripId, eventId);
     }
 
     @PutMapping("/days/{dayIndex}/order")

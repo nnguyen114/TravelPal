@@ -221,3 +221,34 @@ export function EditDestinationDialog({ trip, dest, onClose }: { trip: Trip; des
     </Modal>
   )
 }
+
+export function InviteDialog({ trip, onClose }: { trip: Trip; onClose: () => void }) {
+  const [copied, setCopied] = useState(false)
+  const create = useMutation({ mutationFn: () => api<{ token: string }>(`/api/trips/${trip.id}/invites`, { method: 'POST' }) })
+  const revoke = useMutation({ mutationFn: () => api(`/api/trips/${trip.id}/invites`, { method: 'DELETE' }) })
+  const url = create.data && `${window.location.origin}/join/${create.data.token}`
+
+  return (
+    <Modal title="Invite to this trip" onClose={onClose}>
+      <p className="muted" style={{ margin: 0, fontSize: 14 }}>Anyone with the link can join as an editor for 30 days. No account connections needed.</p>
+      {url ? (
+        <div className="row" style={{ flexWrap: 'nowrap' }}>
+          <input aria-label="Invite link" readOnly value={url} onFocus={(e) => e.target.select()}
+            style={{ flex: 1, minHeight: 44, border: '1.5px solid var(--line-2)', borderRadius: 12, padding: '0 12px' }} />
+          <button className="btn btn-primary" onClick={() => navigator.clipboard?.writeText(url).then(() => setCopied(true))}>
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+      ) : (
+        <button className="btn btn-primary" disabled={create.isPending} onClick={() => create.mutate()}>Create invite link</button>
+      )}
+      {errorText(create.error ?? revoke.error)}
+      {trip.role === 'OWNER' && (
+        <div className="spread" style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+          <span className="muted" style={{ fontSize: 13 }}>{revoke.isSuccess ? 'All links turned off.' : 'Shared a link by mistake?'}</span>
+          <button className="btn btn-ghost" disabled={revoke.isPending} onClick={() => { revoke.mutate(); create.reset() }}>Turn off all links</button>
+        </div>
+      )}
+    </Modal>
+  )
+}
