@@ -58,8 +58,18 @@ export async function startSession(path: '/api/auth/login' | '/api/auth/register
   return s.user
 }
 
+/** Forgets the access token even if the server can't be reached; the server ends the session when it can. */
 export async function endSession(): Promise<void> {
-  await send('/api/auth/logout', { method: 'POST' })
+  try {
+    await send('/api/auth/logout', { method: 'POST' })
+  } finally {
+    accessToken = null
+  }
+}
+
+/** Permanently deletes the signed-in account (the password is checked again on the server). */
+export async function deleteAccount(password: string): Promise<void> {
+  await parse<void>(await send('/api/me', { method: 'DELETE', body: JSON.stringify({ password }) }))
   accessToken = null
 }
 

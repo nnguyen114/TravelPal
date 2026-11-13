@@ -17,8 +17,15 @@ class SecurityConfigTest {
         String priv = "-----BEGIN PRIVATE KEY-----\n" + Base64.getMimeEncoder().encodeToString(pair.getPrivate().getEncoded()) + "\n-----END PRIVATE KEY-----";
         String pub = "-----BEGIN PUBLIC KEY-----\n" + Base64.getMimeEncoder().encodeToString(pair.getPublic().getEncoded()) + "\n-----END PUBLIC KEY-----";
 
-        var key = new SecurityConfig().signingKey(new JwtProperties(priv, pub, Duration.ofMinutes(15), Duration.ofDays(30)));
+        var key = new SecurityConfig().signingKey(new JwtProperties(priv, pub, Duration.ofMinutes(15), Duration.ofDays(30)), false);
         assertThat(key.getKeyID()).isEqualTo("k1");
         assertThat(key.toECPublicKey()).isEqualTo(pair.getPublic());
+    }
+
+    @Test
+    void refusesToStartWithoutKeysOutsideDev() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new SecurityConfig()
+                .signingKey(new JwtProperties("", "", Duration.ofMinutes(15), Duration.ofDays(30)), false))
+            .hasMessageContaining("JWT_PRIVATE_KEY");
     }
 }

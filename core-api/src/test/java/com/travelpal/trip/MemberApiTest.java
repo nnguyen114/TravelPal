@@ -64,4 +64,14 @@ class MemberApiTest extends IntegrationTest {
         mvc.perform(auth(delete(base + role(owner)), owner)).andExpect(status().isNoContent());
         mvc.perform(auth(get(base), mina)).andExpect(jsonPath("$.members.length()").value(1));
     }
+
+    @Test
+    void deletingAnAccountHandsSharedTripsOnAndDeletesSoloOnes() throws Exception {
+        String solo = read(mvc.perform(json(post("/api/trips"), owner,
+                "{\"name\":\"Solo\",\"startDate\":\"2027-06-10\",\"endDate\":\"2027-06-12\",\"destination\":{\"name\":\"Kyoto\"}}")).andReturn(), "$.id");
+        mvc.perform(json(delete("/api/me"), owner, "{\"password\":\"correct-horse-battery\"}")).andExpect(status().isNoContent());
+
+        mvc.perform(auth(get(base), mina)).andExpect(jsonPath("$.role").value("OWNER")).andExpect(jsonPath("$.members.length()").value(1));
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("select count(*) from trip where id = ?::uuid", Long.class, solo)).isZero();
+    }
 }

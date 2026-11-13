@@ -155,6 +155,11 @@ class HistoryApiTest extends IntegrationTest {
         assertThat(stream.subscriberCount(tripId)).isEqualTo(1);
         add("A", "0");
         stream.heartbeat();
+        // The change reaches this task through Redis pub/sub, so it lands a moment later.
+        long deadline = System.currentTimeMillis() + 5000;
+        while (!sse.getResponse().getContentAsString().contains("event:changed") && System.currentTimeMillis() < deadline) {
+            Thread.onSpinWait();
+        }
         String body = sse.getResponse().getContentAsString();
         assertThat(body).contains(":connected").contains("event:changed").contains(who.userId().toString()).contains(":ping");
         mvc.perform(auth(get(base + "/stream"), register())).andExpect(status().isNotFound());

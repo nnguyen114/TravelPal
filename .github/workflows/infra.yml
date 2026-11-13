@@ -1,0 +1,31 @@
+name: infra
+on:
+  push: { branches: [main, develop], paths: ["infra/**", "core-api/Dockerfile", "ai-service/Dockerfile", ".github/workflows/infra.yml"] }
+  pull_request: { paths: ["infra/**", "core-api/Dockerfile", "ai-service/Dockerfile", ".github/workflows/infra.yml"] }
+permissions: { contents: read }
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: infra/terraform } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.13.x" }
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Terraform and Dockerfile misconfigurations; deliberate exceptions carry a trivy:ignore comment with the reason.
+      - uses: aquasecurity/trivy-action@0.33.1
+        with: { scan-type: config, scan-ref: ., severity: "HIGH,CRITICAL", exit-code: "1" }
+  images:
+    runs-on: ubuntu-latest
+    strategy: { matrix: { service: [core-api, ai-service] } }
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -t ${{ matrix.service }} ${{ matrix.service }}
+      - uses: aquasecurity/trivy-action@0.33.1
+        with: { image-ref: "${{ matrix.service }}", severity: "HIGH,CRITICAL", ignore-unfixed: true, exit-code: "1" }

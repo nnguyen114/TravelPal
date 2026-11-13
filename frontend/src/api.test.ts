@@ -48,4 +48,14 @@ describe('api client', () => {
     await endSession()
     expect(fetch.mock.calls[0][0]).toBe('/api/auth/logout')
   })
+
+  it('forgets the access token even when logout cannot reach the server', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(200, session('tok'))).mockRejectedValueOnce(new TypeError('offline')))
+    await startSession('/api/auth/login', {})
+    await expect(endSession()).rejects.toThrow('offline')
+    const fetch = vi.fn().mockResolvedValue(json(200, []))
+    vi.stubGlobal('fetch', fetch)
+    await api('/api/trips')
+    expect(new Headers(fetch.mock.calls[0][1].headers).get('Authorization')).toBeNull()
+  })
 })

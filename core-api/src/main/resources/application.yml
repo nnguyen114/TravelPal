@@ -27,6 +27,8 @@ travelpal:
     access-ttl: 15m
     refresh-ttl: 30d
   cookie-secure: ${COOKIE_SECURE:true}
+  # Header with the real client IP from a trusted edge (CloudFront-Viewer-Address in AWS). Empty = connection address.
+  client-ip-header: ${CLIENT_IP_HEADER:}
   # Private EC P-256 JWK (JSON) for core-api -> ai-service tokens. Unset = new key per process (dev only).
   internal-jwk: ${INTERNAL_JWT_PRIVATE_JWK:}
   places-url: ${PLACES_URL:https://photon.komoot.io}
