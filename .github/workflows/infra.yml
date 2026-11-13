@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       # Terraform and Dockerfile misconfigurations; deliberate exceptions carry a trivy:ignore comment with the reason.
-      - uses: aquasecurity/trivy-action@0.33.1
+      - uses: aquasecurity/trivy-action@v0.36.0
         with: { scan-type: config, scan-ref: ., severity: "HIGH,CRITICAL", exit-code: "1" }
   images:
     runs-on: ubuntu-latest
@@ -27,5 +27,5 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: docker build -t ${{ matrix.service }} ${{ matrix.service }}
-      - uses: aquasecurity/trivy-action@0.33.1
+      - uses: aquasecurity/trivy-action@v0.36.0
         with: { image-ref: "${{ matrix.service }}", severity: "HIGH,CRITICAL", ignore-unfixed: true, exit-code: "1" }
