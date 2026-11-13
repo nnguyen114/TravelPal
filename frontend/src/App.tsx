@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router'
 import { AuthProvider, useAuth } from './auth'
 import { AuthPage } from './pages/AuthPage'
 import { Dashboard } from './pages/Dashboard'
+import { TripPage } from './pages/TripPage'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })
 
@@ -12,6 +13,8 @@ function Routed() {
   if (!user) return <AuthPage />
   return (
     <Routes>
+      <Route path="/trips/:tripId" element={<TripPage tab="main" />} />
+      <Route path="/trips/:tripId/destinations" element={<TripPage tab="destinations" />} />
       <Route path="*" element={<Dashboard />} />
     </Routes>
   )
