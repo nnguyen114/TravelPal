@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app import chat, impact, worker
+from app import chat, discovery, impact, links, worker
 from app.security import require_internal
 
 # Local dev: keys live in the repo-root .env (gitignored). Real env vars win.
@@ -53,3 +53,28 @@ class ImpactRequest(BaseModel):
 @app.post("/internal/impact")
 def impact_check(req: ImpactRequest, _: Annotated[dict, Depends(require_internal)]) -> dict:
     return impact.analyze(req.trip, req.changes)
+
+
+class DiscoverRequest(BaseModel):
+    request: str | None = Field(default=None, max_length=500)
+    center: dict
+    radiusKm: float = Field(default=3, gt=0, le=30)
+    taste: list[dict] = Field(default_factory=list, max_length=60)
+    seeds: list[dict] = Field(default_factory=list, max_length=5)
+    exclude: list[dict] = Field(default_factory=list, max_length=500)
+    count: int = Field(default=5, ge=1, le=10)
+
+
+@app.post("/internal/discover")
+def discover(req: DiscoverRequest, _: Annotated[dict, Depends(require_internal)]) -> dict:
+    return discovery.discover(req.model_dump())
+
+
+class LinkRequest(BaseModel):
+    url: str = Field(min_length=8, max_length=2000)
+    near: dict | None = None
+
+
+@app.post("/internal/link")
+def link(req: LinkRequest, _: Annotated[dict, Depends(require_internal)]) -> dict:
+    return links.resolve(req.url, req.near)

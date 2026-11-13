@@ -16,6 +16,10 @@ interface DestinationRepository extends JpaRepository<Destination, UUID> {
 
     Optional<Destination> findByIdAndTripId(UUID id, UUID tripId);
 
+    /** A traveler's own picks across all their trips: the strongest taste signal we have. */
+    @Query("select d from Destination d where d.createdBy = ?1 order by d.createdAt desc")
+    List<Destination> ownPicks(UUID userId, org.springframework.data.domain.Limit limit);
+
     /** AI suggestions land only on places nobody has tagged; a bulk update so editors' versions aren't bumped. */
     @Modifying
     @Query("""

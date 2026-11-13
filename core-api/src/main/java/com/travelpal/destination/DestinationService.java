@@ -57,6 +57,11 @@ public class DestinationService {
     }
 
     @Transactional(readOnly = true)
+    public List<Destination> ownPicks(UUID userId, int limit) {
+        return repo.ownPicks(userId, org.springframework.data.domain.Limit.of(limit));
+    }
+
+    @Transactional(readOnly = true)
     public List<Destination> list(UUID userId, UUID tripId) {
         access.require(tripId, userId, TripRole.VIEWER);
         return repo.findByTrip(tripId);
