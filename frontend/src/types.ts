@@ -35,3 +35,16 @@ export type Preview = {
   request: { mode: Mode; scope: 'TRIP' | 'DAY' | 'SELECTION'; dayIndex: number | null; instructions: string | null }
   result: PlanResult | null; error: string | null; createdAt: string
 }
+
+export type ProposalChange = {
+  kind: 'ADD' | 'MOVE' | 'REMOVE'; destinationId: string | null; name: string
+  fromDay: number | null; dayIndex: number | null; startTime: string | null
+}
+export type Impact = { fits: string; conflicts: string; dayEffect: string; suggestedDay?: number | null; basis?: string }
+export type ProposalComment = { id: string; authorId: string; authorName: string; body: string; createdAt: string }
+export type Proposal = {
+  id: string; title: string; description: string | null; status: 'OPEN' | 'MERGED' | 'CLOSED'
+  authorId: string; authorName: string; createdAt: string; closedAt: string | null
+  changes: ProposalChange[]; affectedDays: number[]; commentCount: number; stale: boolean
+  impact: Impact | null; impactByName: string | null; comments: ProposalComment[] | null
+}

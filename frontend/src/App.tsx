@@ -28,6 +28,8 @@ function Routed() {
       <Route path="/trips/:tripId/destinations" element={<TripPage tab="destinations" />} />
       <Route path="/trips/:tripId/members" element={<TripPage tab="members" />} />
       <Route path="/trips/:tripId/activity" element={<TripPage tab="activity" />} />
+      <Route path="/trips/:tripId/suggestions" element={<TripPage tab="suggestions" />} />
+      <Route path="/trips/:tripId/suggestions/:proposalId" element={<TripPage tab="suggestions" />} />
       <Route path="/trips/:tripId/optimize/:previewId" element={<OptimizePage />} />
       <Route path="/join/:token" element={<JoinPage />} />
       <Route path="*" element={<Dashboard />} />

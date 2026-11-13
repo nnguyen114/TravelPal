@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router'
 import { api } from './api'
 import { CloseIcon } from './icons'
 import { dayDate, formatDay, toInput } from './trip'
-import type { Destination, DestinationInput, Flexibility, Place, Trip } from './types'
+import type { Destination, DestinationInput, Flexibility, Place, Proposal, Trip } from './types'
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null)
@@ -135,6 +135,18 @@ function useSaveDestination(trip: Trip, id: string | null, onDone: () => void) {
 export function AddDestinationDialog({ trip, day, onClose }: { trip: Trip; day: number | null; onClose: () => void }) {
   const [place, setPlace] = useState<{ p: Place | null; text: string }>({ p: null, text: '' })
   const save = useSaveDestination(trip, null, onClose)
+  const navigate = useNavigate()
+  const propose = useMutation({
+    mutationFn: (body: unknown) => api<Proposal>(`/api/trips/${trip.id}/proposals`, { method: 'POST', body }),
+    onSuccess: (p) => navigate(`/trips/${trip.id}/suggestions/${p.id}`),
+  })
+  const proposeIt = (form: HTMLFormElement) => {
+    if (!form.reportValidity()) return
+    const f = new FormData(form)
+    const name = place.p?.name ?? place.text
+    propose.mutate({ title: `Add ${name}`, changes: [{ kind: 'ADD', name, address: place.p?.address, lat: place.p?.lat, lng: place.p?.lng,
+      providerId: place.p?.providerId, durationMin: Number(f.get('duration')) || null, dayIndex: dayValue(f) }] })
+  }
   const bias = trip.cities.find((c) => c.lat != null)
 
   function submit(e: FormEvent<HTMLFormElement>) {
@@ -156,8 +168,11 @@ export function AddDestinationDialog({ trip, day, onClose }: { trip: Trip; day: 
           <label className="field" style={{ flex: 1 }}>Minutes<input name="duration" type="number" min={5} max={1440} defaultValue={60} /></label>
         </div>
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>Adding to a day doesn’t move anything else. Optimize only runs when you ask.</p>
-        {errorText(save.error)}
-        <button className="btn btn-primary" disabled={save.isPending}>Add Directly</button>
+        {errorText(save.error ?? propose.error)}
+        <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <button type="button" className="btn" disabled={propose.isPending} onClick={(e) => proposeIt(e.currentTarget.form!)}>Propose to Group</button>
+          <button className="btn btn-primary" disabled={save.isPending}>Add Directly</button>
+        </div>
       </form>
     </Modal>
   )

@@ -9,16 +9,18 @@ import { AskAiButton, AssistantDrawer } from '../assistant'
 import { PaceSwitch, useOptimize } from '../optimize'
 import { SparkleIcon } from '../icons'
 import { bestTime, byDay, canEdit, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, toInput } from '../trip'
-import type { Destination, Mode, Trip } from '../types'
+import type { Destination, Mode, Proposal, Trip } from '../types'
+import { SuggestionsTab } from './Suggestions'
 import { ActivityTab, MembersTab } from './CollabTabs'
 
-type Tab = 'main' | 'destinations' | 'members' | 'activity'
-const TABS: [Tab, string, string][] = [['main', 'Main Trip', ''], ['destinations', 'Destinations', '/destinations'], ['members', 'Members', '/members'], ['activity', 'Activity', '/activity']]
+type Tab = 'main' | 'destinations' | 'suggestions' | 'members' | 'activity'
+const TABS: [Tab, string, string][] = [['main', 'Main Trip', ''], ['destinations', 'Destinations', '/destinations'],
+  ['suggestions', 'Suggestions', '/suggestions'], ['members', 'Members', '/members'], ['activity', 'Activity', '/activity']]
 
 const TripMap = lazy(() => import('../map/TripMap').then((m) => ({ default: m.TripMap })))
 const AVATAR_BG = ['#FFD9A8', '#BFE6E1', '#D9D4FB', '#FDE7DF']
 
-function TripHeader({ trip, tab }: { trip: Trip; tab: Tab }) {
+function TripHeader({ trip, tab, openProposals }: { trip: Trip; tab: Tab; openProposals: number }) {
   const shown = trip.members.slice(0, 3)
   const [inviting, setInviting] = useState(false)
   return (
@@ -52,7 +54,12 @@ function TripHeader({ trip, tab }: { trip: Trip; tab: Tab }) {
         </div>
         <nav aria-label="Trip sections" className="tabs">
           {TABS.map(([t, label, path]) => (
-            <Link key={t} to={`/trips/${trip.id}${path}`} aria-current={tab === t ? 'page' : undefined}>{label}</Link>
+            <Link key={t} to={`/trips/${trip.id}${path}`} aria-current={tab === t ? 'page' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {label}
+              {t === 'suggestions' && openProposals > 0 && (
+                <span aria-label={`${openProposals} open`} style={{ background: '#FDE7DF', color: '#A9412A', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>{openProposals}</span>
+              )}
+            </Link>
           ))}
         </nav>
       </div>
@@ -287,6 +294,7 @@ export function TripPage({ tab }: { tab: Tab }) {
   useTripLive(tripId)
   const trip = useQuery({ queryKey: ['trip', tripId], queryFn: () => api<Trip>(`/api/trips/${tripId}`) })
   const destinations = useQuery({ queryKey: ['destinations', tripId], queryFn: () => api<Destination[]>(`/api/trips/${tripId}/destinations`) })
+  const proposals = useQuery({ queryKey: ['proposals', tripId], queryFn: () => api<Proposal[]>(`/api/trips/${tripId}/proposals`) })
 
   if (trip.error || destinations.error) {
     return (
@@ -299,9 +307,10 @@ export function TripPage({ tab }: { tab: Tab }) {
   if (!trip.data || !destinations.data) return null
   return (
     <>
-      <TripHeader trip={trip.data} tab={tab} />
+      <TripHeader trip={trip.data} tab={tab} openProposals={proposals.data?.filter((p) => p.status === 'OPEN').length ?? 0} />
       {tab === 'main' && <Itinerary trip={trip.data} destinations={destinations.data} />}
       {tab === 'destinations' && <DestinationsTab trip={trip.data} destinations={destinations.data} />}
+      {tab === 'suggestions' && <SuggestionsTab trip={trip.data} destinations={destinations.data} proposals={proposals.data ?? []} />}
       {tab === 'members' && <MembersTab trip={trip.data} />}
       {tab === 'activity' && <ActivityTab trip={trip.data} />}
       {askOpen ? <AssistantDrawer trip={trip.data} onClose={() => setAskOpen(false)} /> : <AskAiButton onClick={() => setAskOpen(true)} />}

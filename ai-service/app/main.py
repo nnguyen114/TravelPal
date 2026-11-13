@@ -7,8 +7,9 @@ from typing import Annotated
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
-from app import chat, worker
+from app import chat, impact, worker
 from app.security import require_internal
 
 # Local dev: keys live in the repo-root .env (gitignored). Real env vars win.
@@ -42,3 +43,13 @@ def assistant(req: chat.ChatRequest, _: Annotated[dict, Depends(require_internal
     if not chat.available():
         raise HTTPException(503, "Assistant not configured")
     return StreamingResponse(chat.chat_events(req), media_type="text/event-stream")
+
+
+class ImpactRequest(BaseModel):
+    trip: dict
+    changes: list[dict] = Field(min_length=1, max_length=20)
+
+
+@app.post("/internal/impact")
+def impact_check(req: ImpactRequest, _: Annotated[dict, Depends(require_internal)]) -> dict:
+    return impact.analyze(req.trip, req.changes)
