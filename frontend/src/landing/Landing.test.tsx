@@ -82,3 +82,11 @@ it('turns the departures board into the first step of planning', async () => {
   expect(go()).toHaveAttribute('href', '/signup?to=Tokyo')
   expect(flights[0]).toHaveTextContent('10:05')
 })
+
+it('lists the features that save the group time', () => {
+  renderLanding()
+  for (const title of ['Everyone plans at once', 'Suggest, then merge', 'Days sorted in one tap', 'The right hour for each place',
+    'Picks that match your taste', 'Answers instead of research']) {
+    expect(screen.getByRole('heading', { name: title })).toBeInTheDocument()
+  }
+})

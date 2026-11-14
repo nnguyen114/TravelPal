@@ -86,6 +86,22 @@ export function Landing() {
           <Wave flip />
         </section>
 
+        <section className="lp-section lp-perks-section">
+          <Head tag="Why it's faster" title="Where group trips usually get stuck, handled" />
+          <div className="lp-extras">
+            {PERKS.map((x, i) => (
+              <div key={x.title} className="lp-extra" data-reveal style={delay(i * 0.05)}>
+                <span className="lp-icon" style={{ background: x.bg, color: x.fg }} aria-hidden="true">{x.icon}</span>
+                <div>
+                  <span className="lp-kind" style={{ color: x.fg }}>{x.kind}</span>
+                  <h3>{x.title}</h3>
+                  <p>{x.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <section id="features" className="lp-section lp-stories">
           <Story tag="Collect" color="#B5472A" tint="#FDEBE4" title="Paste whatever you've got" art={<CollectArt />}>
             Notes-app lists, Google Maps links, the TikTok someone sent at 2 a.m. TravelPal finds the real place and pins
@@ -117,18 +133,6 @@ export function Landing() {
             </div>
           </div>
           <Wave flip />
-        </section>
-
-        <section className="lp-section">
-          <Head tag="Also in the box" title="The small stuff that saves arguments" />
-          <div className="lp-extras">
-            {EXTRAS.map((x, i) => (
-              <div key={x.title} className="lp-extra" data-reveal style={delay(i * 0.05)}>
-                <span className="lp-icon" style={{ background: x.bg, color: x.fg }} aria-hidden="true">{x.icon}</span>
-                <div><h3>{x.title}</h3><p>{x.body}</p></div>
-              </div>
-            ))}
-          </div>
         </section>
 
         <section id="faq" className="lp-section lp-faq">
@@ -316,17 +320,40 @@ const USES = [
   },
 ]
 
-/* ---- extras ---- */
-
 const ico = (d: ReactNode) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
 
-const EXTRAS = [
-  { title: 'Live updates', body: 'Everyone sees changes as they happen.', bg: '#E2F3F0', fg: '#0A5F59', icon: ico(<path d="M13 2 4 14h7l-1 8 9-12h-7z" />) },
-  { title: 'Undo', body: 'Every edit is in the history, and place edits undo in one tap.', bg: '#FDEBE4', fg: '#B5472A', icon: ico(<><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-3" /></>) },
-  { title: 'Map and list in sync', body: 'Tap a stop and the map follows.', bg: '#E3F0FB', fg: '#2C64A0', icon: ico(<><path d="m9 4-6 2v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>) },
-  { title: 'Trip assistant', body: 'Ask “can we fit teamLab on Day 2?” and get a straight answer.', bg: '#ECEAFD', fg: '#5B4BD0', icon: ico(<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />) },
-  { title: 'Invite links', body: 'Share one link. Turn it off any time.', bg: '#FFF1CC', fg: '#7A4F00', icon: ico(<><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></>) },
-  { title: 'More like this', body: 'Found a café you love? Get a few more nearby, with a reason for each.', bg: '#FCE3EC', fg: '#A63266', icon: ico(<><path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z" /><path d="M19 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></>) },
+// Each one removes a step where group planning usually stalls.
+const PERKS = [
+  {
+    kind: 'Together', title: 'Everyone plans at once', bg: '#E2F3F0', fg: '#0A5F59',
+    body: 'Share one link. Friends add places from their own phones and see each other\'s changes as they happen.',
+    icon: ico(<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5" /></>),
+  },
+  {
+    kind: 'Together', title: 'Suggest, then merge', bg: '#E3F0FB', fg: '#2C64A0',
+    body: 'Instead of rewriting the plan, friends can suggest a change. The group talks it over and AI checks it fits before it goes in.',
+    icon: ico(<><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /><path d="M9 11.5l2 2 4-4" /></>),
+  },
+  {
+    kind: 'Auto-planned', title: 'Days sorted in one tap', bg: '#ECEAFD', fg: '#5B4BD0',
+    body: 'Places are grouped by neighborhood and put in a sensible order, so nobody spends an evening dragging pins around.',
+    icon: ico(<><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="6" r="2.5" /><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5" /></>),
+  },
+  {
+    kind: 'Auto-planned', title: 'The right hour for each place', bg: '#FFF1CC', fg: '#7A4F00',
+    body: 'Markets in the morning, bar streets after dark, and the far-off mountain town on a day of its own.',
+    icon: ico(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>),
+  },
+  {
+    kind: 'Tailored by AI', title: 'Picks that match your taste', bg: '#FCE3EC', fg: '#A63266',
+    body: 'Ask for more places like the ones you love. Suggestions learn from what you add and skip, and each one says why it fits.',
+    icon: ico(<><path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z" /><path d="M19 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></>),
+  },
+  {
+    kind: 'Tailored by AI', title: 'Answers instead of research', bg: '#FDEBE4', fg: '#B5472A',
+    body: 'Ask “can we fit teamLab on Day 2?” and get a straight answer from your actual plan, with the change ready to apply.',
+    icon: ico(<><path d="M4 5h16v11H8l-4 4z" /><path d="M9 10h6" /></>),
+  },
 ]
 
 const FAQ: [string, string][] = [

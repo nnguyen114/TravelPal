@@ -16,7 +16,7 @@
   overflow-x: clip;
   background: #FFFDF8;
 }
-.landing h1, .landing h2 { letter-spacing: -0.03em; }
+.landing h1, .landing h2 { letter-spacing: -0.03em; text-wrap: balance; }
 .landing h3 { letter-spacing: -0.01em; }
 
 /* Scroll reveal */
@@ -190,12 +190,14 @@
 .lp-use h3 { font-size: 22px; font-weight: 800; margin: 6px 12px 0; }
 .lp-use p { margin: 8px 12px 0; color: var(--ink-2); line-height: 1.55; }
 
-/* Extras */
+/* Features that remove planning bottlenecks */
+.lp-perks-section { padding-top: 64px; }
 .lp-extras { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .lp-extra { display: flex; gap: 16px; align-items: flex-start; padding: 22px; border-radius: 22px; background: #fff; border: 1px solid var(--line); transition: transform .4s var(--spring), box-shadow .4s var(--ease), opacity .8s var(--ease) var(--d, 0s); }
 .lp-extra:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
 .lp-icon { width: 48px; height: 48px; flex: none; border-radius: 14px; display: flex; align-items: center; justify-content: center; transition: transform .4s var(--spring); }
 .lp-extra:hover .lp-icon { transform: rotate(-8deg) scale(1.08); }
+.lp-kind { display: block; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; }
 .lp-extra h3 { font-size: 17px; font-weight: 800; }
 .lp-extra p { margin: 6px 0 0; color: var(--ink-2); line-height: 1.5; font-size: 15px; }
 
