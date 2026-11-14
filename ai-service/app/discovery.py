@@ -16,11 +16,10 @@ import re
 
 import httpx
 
-from app import claude
-from app.optimizer import Stop, km
+from app import claude, places
+from app.optimizer import km, point
 
 log = logging.getLogger(__name__)
-PLACES_URL = os.environ.get("PLACES_URL", "https://photon.komoot.io")
 VOYAGE_MODEL = os.environ.get("VOYAGE_MODEL", "voyage-3.5")
 OSM_TAG = re.compile(r"^[a-z_]+(:[a-z_]+)?$")
 # Map entries whose "name" is just a description ("Second hand clothes", "Cafe") aren't places anyone can find.
@@ -91,34 +90,26 @@ def plan_searches(req: dict) -> tuple[str, list[dict]]:
     return data["vibe"][:300], searches
 
 
-def search_places(searches: list[dict], center: dict, radius_km: float, http: httpx.Client) -> list[dict]:
-    """Candidate places from OpenStreetMap inside a box around the center, de-duplicated."""
+def search_places(searches: list[dict], center: dict, radius_km: float, http: httpx.Client | None = None) -> list[dict]:
+    """Candidate places inside a box around the center, de-duplicated. Raises places.Unavailable if every search failed."""
     d_lat = radius_km / 111
     d_lng = radius_km / (111 * max(0.2, math.cos(math.radians(center["lat"]))))
     bbox = f"{center['lng'] - d_lng},{center['lat'] - d_lat},{center['lng'] + d_lng},{center['lat'] + d_lat}"
-    seen, out = set(), []
+    seen, out, failures = set(), [], 0
     for s in searches:
-        params = {"q": s["q"], "limit": 15, "lang": "en", "lat": center["lat"], "lon": center["lng"], "bbox": bbox}
-        if s["osm_tag"]:
-            params["osm_tag"] = s["osm_tag"]
         try:
-            features = http.get(f"{PLACES_URL}/api/", params=params, timeout=8).raise_for_status().json().get("features", [])
-        except httpx.HTTPError as e:
-            log.warning("place search failed: %s", e)
+            found = places.search(s["q"], near=center, bbox=bbox, osm_tag=s["osm_tag"], limit=15, http=http)
+        except places.Unavailable:
+            failures += 1
             continue
-        for f in features:
-            p, (lng, lat) = f["properties"], f["geometry"]["coordinates"]
-            pid = f"osm:{p.get('osm_type')}{p.get('osm_id')}"
-            name = (p.get("name") or "").strip()
-            key = (name.lower(), p.get("street"))
-            if pid in seen or key in seen or not name or GENERIC.fullmatch(name.lower()) or name.lower() == s["q"].lower():
+        for c in found:
+            key = (c["name"].lower(), c["address"])
+            if c["providerId"] in seen or key in seen or GENERIC.fullmatch(c["name"].lower()) or c["name"].lower() == s["q"].lower():
                 continue
-            seen.update((pid, key))
-            out.append({
-                "name": name, "lat": lat, "lng": lng, "providerId": pid,
-                "category": (p.get("osm_value") or "").replace("_", " "),
-                "address": ", ".join(str(p[k]) for k in ("street", "district", "city") if p.get(k)),
-            })
+            seen.update((c["providerId"], key))
+            out.append(c)
+    if searches and failures == len(searches):
+        raise places.Unavailable
     return out
 
 
@@ -147,7 +138,7 @@ def embed(texts: list[str]) -> list[list[float]] | None:
 def rank(candidates: list[dict], vibe: str, taste: list[dict], seeds: list[dict], center: dict, count: int) -> list[dict]:
     """Similarity to the vibe and the traveler's picks, minus distance, then a diversity pass (MMR)."""
     for c in candidates:
-        c["distanceKm"] = round(km(_pt(c), _pt(center)), 1)
+        c["distanceKm"] = round(km(point((c["lat"], c["lng"])), point((center["lat"], center["lng"]))), 1)
     vectors = embed([vibe] + [describe(t) for t in seeds + taste] + [describe(c) for c in candidates])
     if vectors is None:
         return sorted(candidates, key=lambda c: c["distanceKm"])[:count]
@@ -168,10 +159,6 @@ def rank(candidates: list[dict], vibe: str, taste: list[dict], seeds: list[dict]
         c.pop("_v", None)
         c.pop("_score", None)
     return chosen
-
-
-def _pt(p: dict) -> Stop:
-    return Stop("", "", p["lat"], p["lng"], 0, None, None, None, False)
 
 
 def explain(picks: list[dict], vibe: str, taste: list[dict], count: int) -> list[dict]:
@@ -200,7 +187,6 @@ def explain(picks: list[dict], vibe: str, taste: list[dict], count: int) -> list
 
 
 def discover(req: dict, http: httpx.Client | None = None) -> dict:
-    http = http or httpx.Client(headers={"User-Agent": "travelpal-ai-service"})
     vibe, searches = plan_searches(req)
     excluded_ids = {e.get("providerId") for e in req.get("exclude", []) if e.get("providerId")}
     excluded_names = {e["name"].strip().lower() for e in req.get("exclude", []) if e.get("name")}

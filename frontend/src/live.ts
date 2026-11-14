@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { readEvents } from './api'
 
-export const RECONNECT_MS = 3000
+const RECONNECT_MS = 3000
 
 /** Keeps a trip's queries fresh: any collaborator's change makes everyone refetch the shared state. */
 export function useTripLive(tripId: string | undefined) {

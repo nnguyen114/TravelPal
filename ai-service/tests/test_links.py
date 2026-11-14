@@ -114,3 +114,9 @@ def test_ipv6_and_ports_are_pinned(monkeypatch):
         return httpx.Response(200, text="<title>Café X | Tokyo</title>", headers={"content-type": "text/html"})
     links.fetch("https://user@v6.example:8443/p?q=1", client(routes))
     assert seen == [("https://[2606:2800:220:1::1]:8443/p?q=1", "v6.example:8443")]
+
+
+def test_place_search_outage_says_so():
+    out = links.resolve("https://maps.google.com/?q=Koffee+Mameya", None, client(lambda r: httpx.Response(503)))
+    assert out["guess"] == "Koffee Mameya" and out["candidates"] == []
+    assert out["message"].startswith("Place search is unavailable right now")

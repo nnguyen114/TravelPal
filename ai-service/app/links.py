@@ -13,10 +13,11 @@ from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import httpx
 
-from app import claude
-from app.discovery import PLACES_URL
+from app import claude, places
 
 log = logging.getLogger(__name__)
+# Fetches pages people paste; identifies itself and gives up quickly.
+PAGE_CLIENT = httpx.Client(headers={"User-Agent": "Mozilla/5.0 (compatible; travelpal-link-preview)"}, timeout=6)
 MAX_BYTES = 1_000_000
 MAX_REDIRECTS = 3
 MAPS_AT = re.compile(r"/maps/place/([^/]+)/@(-?\d+\.\d+),(-?\d+\.\d+)")
@@ -114,31 +115,30 @@ def guess(text: str, url: str) -> tuple[str, str]:
     return first[:150], ""
 
 
-def search(q: str, near: dict | None, http: httpx.Client) -> list[dict]:
-    params = {"q": q, "limit": 5, "lang": "en"}
-    if near:
-        params |= {"lat": near["lat"], "lon": near["lng"]}
+def candidates(guess: str, near: dict | None, http: httpx.Client | None, *queries: str) -> dict:
+    """Map matches for a guessed place (trying each query in turn, the guess itself by default), or an honest message."""
     try:
-        features = http.get(f"{PLACES_URL}/api/", params=params, timeout=8).raise_for_status().json().get("features", [])
-    except httpx.HTTPError:
-        return []
-    return [{"name": f["properties"].get("name") or q, "lat": f["geometry"]["coordinates"][1], "lng": f["geometry"]["coordinates"][0],
-             "providerId": f"osm:{f['properties'].get('osm_type')}{f['properties'].get('osm_id')}",
-             "address": ", ".join(str(f["properties"][k]) for k in ("street", "district", "city", "country") if f["properties"].get(k))}
-            for f in features]
+        found = []
+        for q in queries or (guess,):
+            if found := places.search(q, near=near, limit=5, http=http):
+                break
+    except places.Unavailable:
+        return {"readable": True, "guess": guess, "candidates": [],
+                "message": "Place search is unavailable right now, so we couldn't find it on the map. Try again in a minute."}
+    return {"readable": True, "guess": guess, "candidates": found,
+            "message": None if found else f"We think it's “{guess}” but couldn't find it on the map. Check the name."}
 
 
 def resolve(url: str, near: dict | None, http: httpx.Client | None = None) -> dict:
-    http = http or httpx.Client(headers={"User-Agent": "Mozilla/5.0 (compatible; travelpal-link-preview)"})
     url = url.strip()
     if m := MAPS_AT.search(url):  # Google Maps place links carry the name and coordinates
         name = unquote(m.group(1)).replace("+", " ")
         return {"readable": True, "guess": name, "message": None, "candidates":
                 [{"name": name, "lat": float(m.group(2)), "lng": float(m.group(3)), "providerId": None, "address": ""}]}
     if (q := parse_qs(urlparse(url).query).get("q")) and "maps" in url:  # maps search links: ?q=Place+Name
-        return {"readable": True, "guess": q[0], "message": None, "candidates": search(q[0], near, http)}
+        return candidates(q[0], near, http)
     try:
-        text = page_text(fetch(url, http))
+        text = page_text(fetch(url, http or PAGE_CLIENT))
     except Unreadable as e:
         return {"readable": False, "guess": None, "candidates": [],
                 "message": MESSAGES.get(e.reason, MESSAGES["unreadable"]) + " Type the place name instead."}
@@ -146,6 +146,4 @@ def resolve(url: str, near: dict | None, http: httpx.Client | None = None) -> di
     if not place:
         return {"readable": True, "guess": None, "candidates": [],
                 "message": "We read the page but couldn't tell which place it's about. Type the place name instead."}
-    candidates = search(f"{place} {area}".strip(), near, http) or search(place, near, http)
-    return {"readable": True, "guess": place, "candidates": candidates,
-            "message": None if candidates else f"We think it's “{place}” but couldn't find it on the map. Check the name."}
+    return candidates(place, near, http, *([f"{place} {area}"] if area else []), place)

@@ -2,10 +2,7 @@ package com.travelpal.optimize;
 
 import jakarta.annotation.PreDestroy;
 import com.travelpal.assistant.AiServiceClient;
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
@@ -76,9 +73,9 @@ public class OptimizeQueue {
     }
 
     String runDirect(String body) {
-        try (InputStream in = ai.post("/internal/optimize", body, new UUID(0, 0), Duration.ofMinutes(3), "The optimizer")) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException | RuntimeException e) {
+        try {
+            return ai.call("/internal/optimize", body, new UUID(0, 0), Duration.ofMinutes(3), "The optimizer");
+        } catch (RuntimeException e) {
             log.warn("Direct optimize call failed", e);
             return json.writeValueAsString(Map.of("previewId", json.readTree(body).path("previewId").asString(), "status", "FAILED",
                 "error", "The optimizer is unavailable right now. Try again in a minute."));

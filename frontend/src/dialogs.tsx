@@ -36,6 +36,7 @@ export function PlaceSearch({ label, bias, onPick, required = true, initial = ''
   const [q, setQ] = useState(initial)
   const [results, setResults] = useState<Place[]>([])
   const [picked, setPicked] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   async function search(text = q) {
     if (!text.trim()) return
@@ -44,7 +45,13 @@ export function PlaceSearch({ label, bias, onPick, required = true, initial = ''
       params.set('lat', String(bias.lat))
       params.set('lng', String(bias.lng))
     }
-    setResults(await api<Place[]>(`/api/places/search?${params}`).catch(() => []))
+    setError(null)
+    try {
+      setResults(await api<Place[]>(`/api/places/search?${params}`))
+    } catch (e) {
+      setResults([])
+      setError((e as Error).message) // e.g. the provider is down: say so rather than show "no matches"
+    }
   }
 
   // Arriving with a destination already chosen (e.g. from the landing page): look it up straight away.
@@ -75,7 +82,8 @@ export function PlaceSearch({ label, bias, onPick, required = true, initial = ''
           ))}
         </ul>
       )}
-      {!picked && q && <span className="muted" style={{ fontWeight: 500 }}>Not finding it? It will be added as typed.</span>}
+      {error && <div role="alert" className="error">{error} You can still add it as typed, without a map location.</div>}
+      {!picked && q && !error && <span className="muted" style={{ fontWeight: 500 }}>Not finding it? It will be added as typed.</span>}
     </div>
   )
 }

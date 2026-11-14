@@ -20,6 +20,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import java.time.LocalTime;
+import java.util.LinkedHashMap;
 
 /**
  * Optimization is preview-first: a request becomes a PENDING preview and a queued job; the result is stored for
@@ -117,8 +119,8 @@ public class OptimizeService {
         });
     }
 
-    private static java.time.LocalTime time(JsonNode n) {
-        return n.isNull() || n.isMissingNode() ? null : java.time.LocalTime.parse(n.asString());
+    private static LocalTime time(JsonNode n) {
+        return n.isNull() || n.isMissingNode() ? null : LocalTime.parse(n.asString());
     }
 
     @Transactional(readOnly = true)
@@ -130,7 +132,7 @@ public class OptimizeService {
     /** The knobs the preview was made with (mode, scope, day, instructions), without the trip snapshot. */
     public String params(OptimizationPreview p) {
         JsonNode r = json.readTree(p.getRequest());
-        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        Map<String, Object> m = new LinkedHashMap<>();
         m.put("mode", r.path("mode").asString());
         m.put("scope", r.path("scope").asString());
         m.put("dayIndex", r.path("dayIndex").isNull() ? null : r.path("dayIndex").asInt());
@@ -157,7 +159,7 @@ public class OptimizeService {
             UUID.fromString(i.path("id").asString()),
             i.path("dayIndex").isNull() ? null : i.path("dayIndex").asInt(),
             i.path("position").isNull() ? null : i.path("position").asInt(),
-            i.path("startTime").isNull() ? null : java.time.LocalTime.parse(i.path("startTime").asString()))).toList();
+            time(i.path("startTime")))).toList();
         String mode = json.readTree(p.getRequest()).path("mode").asString().toLowerCase();
         destinations.applyPlan(userId, tripId, items, "applied the optimizer (%s pace): %d of %d places scheduled"
             .formatted(mode, result.path("scheduled").asInt(), result.path("total").asInt()));

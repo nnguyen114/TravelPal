@@ -4,7 +4,7 @@ const base = (size: number, color: string) => ({
   strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true,
 })
 
-export const PinIcon = ({ size = 22, color = '#fff' }: P) => (
+const PinIcon = ({ size = 22, color = '#fff' }: P) => (
   <svg {...base(size, color)}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
 )
 export const PlusIcon = ({ size = 18, color = 'currentColor' }: P) => (

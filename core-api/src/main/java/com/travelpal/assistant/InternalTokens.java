@@ -17,6 +17,9 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.beans.factory.annotation.Value;
+import java.text.ParseException;
+import java.util.List;
 
 /**
  * Short-lived ES256 tokens for core-api -> ai-service calls, signed with a key separate from user tokens.
@@ -29,9 +32,9 @@ public class InternalTokens {
     private final NimbusJwtEncoder encoder;
 
     /** INTERNAL_JWT_PRIVATE_KEY (JWK JSON) keeps one key across restarts and tasks; unset = throwaway dev key. */
-    InternalTokens(@org.springframework.beans.factory.annotation.Value("${travelpal.internal-jwk:}") String jwk,
-                   @org.springframework.beans.factory.annotation.Value("${travelpal.dev-keys}") boolean devKeys)
-            throws JOSEException, java.text.ParseException {
+    InternalTokens(@Value("${travelpal.internal-jwk:}") String jwk,
+                   @Value("${travelpal.dev-keys}") boolean devKeys)
+            throws JOSEException, ParseException {
         if (jwk.isBlank() && !devKeys) {
             throw new IllegalStateException("INTERNAL_JWT_PRIVATE_JWK must be set (DEV_KEYS=false)");
         }
@@ -41,7 +44,7 @@ public class InternalTokens {
 
     public String issue(UUID userId) {
         Instant now = Instant.now();
-        JwtClaimsSet claims = JwtClaimsSet.builder().issuer("core-api").audience(java.util.List.of("ai-service"))
+        JwtClaimsSet claims = JwtClaimsSet.builder().issuer("core-api").audience(List.of("ai-service"))
             .subject(userId.toString()).issuedAt(now).expiresAt(now.plusSeconds(60)).build();
         return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(SignatureAlgorithm.ES256).keyId(key.getKeyID()).build(), claims))
             .getTokenValue();
