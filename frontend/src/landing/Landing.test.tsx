@@ -6,14 +6,31 @@ import { Landing } from './Landing'
 
 const renderLanding = () => render(<MemoryRouter><Landing /></MemoryRouter>)
 
-it('pitches the app and points every call to action at sign-up', () => {
+it('points every call to action at sign-up and log in', () => {
   renderLanding()
-  for (const name of ['Start planning', "Start planning, it's free", 'Plan your first trip']) {
-    expect(screen.getByRole('link', { name })).toHaveAttribute('href', '/signup')
-  }
-  expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/login')
-  expect(screen.getByRole('heading', { name: 'Built for trips with more than one opinion' })).toBeInTheDocument()
-  expect(screen.getAllByRole('article')).toHaveLength(7)
+  const signups = screen.getAllByRole('link', { name: /Plan a trip|Create an account/ })
+  expect(signups.length).toBeGreaterThanOrEqual(4)
+  signups.forEach((a) => expect(a).toHaveAttribute('href', '/signup'))
+  screen.getAllByRole('link', { name: 'Log in' }).forEach((a) => expect(a).toHaveAttribute('href', '/login'))
+  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Turn the group chat into a trip.')
+})
+
+it('has working little demos in the feature stories', async () => {
+  renderLanding()
+  await userEvent.click(screen.getByRole('button', { name: 'Before' }))
+  expect(screen.getAllByText('Not planned yet')).toHaveLength(4)
+  await userEvent.click(screen.getByRole('button', { name: 'After' }))
+  expect(screen.getByText('Day 2 · 9:00 PM')).toBeInTheDocument()
+
+  const like = screen.getByRole('button', { name: '👍 2' })
+  await userEvent.click(like)
+  expect(like).toHaveAttribute('aria-pressed', 'true')
+  expect(like).toHaveTextContent('👍 3')
+})
+
+it('answers common questions', () => {
+  renderLanding()
+  expect(screen.getByText('Will the AI change my plan without asking?')).toBeInTheDocument()
 })
 
 it('steps through every demo chapter', async () => {

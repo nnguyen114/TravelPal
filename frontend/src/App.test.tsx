@@ -22,8 +22,8 @@ it('shows the landing page to visitors, logs in, then logs out', async () => {
   vi.stubGlobal('fetch', fetch)
   render(<App />)
 
-  expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Every great trip starts with a messy list.')
-  await userEvent.click(screen.getByRole('link', { name: 'Log in' }))
+  expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Turn the group chat into a trip.')
+  await userEvent.click(screen.getAllByRole('link', { name: 'Log in' })[0])
   await userEvent.type(await screen.findByLabelText('Email'), 'win@example.com')
   await userEvent.type(screen.getByLabelText('Password'), 'secret-pass')
   await userEvent.click(screen.getByRole('button', { name: 'Log in' }))

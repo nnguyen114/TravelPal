@@ -1,8 +1,9 @@
-import { useEffect, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { Logo, SparkleIcon } from '../icons'
 import { DAY_COLORS } from '../trip'
 import { Demo } from './Demo'
+import { Scene } from './Scene'
 import './landing.css'
 
 /** Fades sections in as they scroll into view. Without IntersectionObserver (or with reduced motion) all is visible. */
@@ -25,200 +26,370 @@ function useReveal() {
 }
 
 const delay = (s: number) => ({ '--d': `${s}s` }) as CSSProperties
+const Arrow = () => <span className="arrow" aria-hidden="true">→</span>
+
+const YEAR = new Date().getFullYear()
+const PLACES = ['Tokyo', 'Lisbon', 'Mexico City', 'Seoul', 'Reykjavík', 'Cape Town', 'Hanoi', 'Marrakech', 'Kyoto', 'Lima', 'Bali', 'New York', 'Istanbul', 'Buenos Aires']
 
 export function Landing() {
   useReveal()
   return (
     <div className="landing">
+      <div className="lp-announce">
+        <span className="lp-new">New</span> Paste a TikTok or Instagram link and TravelPal finds the place.
+      </div>
       <header className="lp-nav">
         <Link to="/" className="brand"><Logo /> TravelPal</Link>
         <nav aria-label="Main">
           <a href="#demo">How it works</a>
           <a href="#features">Features</a>
+          <a href="#faq">FAQ</a>
         </nav>
         <div className="row">
           <Link to="/login" className="btn btn-ghost">Log in</Link>
-          <Link to="/signup" className="btn btn-primary lp-cta">Start planning</Link>
+          <Link to="/signup" className="btn btn-primary lp-btn">Plan a trip</Link>
         </div>
       </header>
 
       <main>
         <section className="lp-hero">
           <div className="lp-hero-copy">
-            <span className="lp-eyebrow" data-reveal style={delay(0)}><SparkleIcon size={15} /> Group trips, sorted by AI</span>
-            <h1 data-reveal style={delay(0.08)}>
-              Every great trip starts with a <span className="lp-scribble">messy list</span>.
+            <h1 data-reveal>
+              Turn the group chat into a <span className="lp-mark">trip</span>.
             </h1>
-            <p data-reveal style={delay(0.16)}>
-              Paste the places everyone's been saving, invite your crew, and TravelPal turns it into days that
-              actually work: bars at night, coffee in the morning, day trips on a day of their own.
+            <p data-reveal style={delay(0.1)}>
+              Everyone keeps sending places. Paste them all in and TravelPal sorts them into days that work: the market
+              in the morning, the bar street after dark, the mountain town on a day of its own.
             </p>
-            <div className="row" data-reveal style={delay(0.24)}>
-              <Link to="/signup" className="btn btn-primary lp-big">Start planning, it's free</Link>
-              <a href="#demo" className="btn lp-big lp-watch">
-                <span className="lp-play" aria-hidden="true">▶</span> Watch it work
-              </a>
+            <div className="lp-actions" data-reveal style={delay(0.2)}>
+              <Link to="/signup" className="btn btn-primary lp-btn lp-big">Plan a trip <Arrow /></Link>
+              <a href="#demo" className="btn lp-btn lp-big lp-secondary"><span className="lp-play" aria-hidden="true">▶</span> Watch the 30-second demo</a>
+            </div>
+            <p className="lp-small" data-reveal style={delay(0.3)}>Works on your phone and laptop. Invite friends with one link.</p>
+          </div>
+          <div className="lp-hero-art" data-reveal style={delay(0.15)}>
+            <Scene />
+            <div className="lp-card lp-day" aria-hidden="true">
+              <div className="lp-day-head"><span className="dot" style={{ background: DAY_COLORS[1] }} /> Day 2 · Tokyo</div>
+              {[['Meiji Jingu', '9:00 AM'], ['Shibuya Sky', '5:30 PM'], ['Golden Gai', '9:00 PM']].map(([n, t], i) => (
+                <div key={n} className="lp-day-row"><span className="n" style={{ background: DAY_COLORS[1] }}>{i + 1}</span>{n}<small>{t}</small></div>
+              ))}
+            </div>
+            <div className="lp-card lp-tag" aria-hidden="true"><SparkleIcon size={15} color="#7C6CF0" /> Nikko gets its own day</div>
+            <div className="lp-card lp-crew" aria-hidden="true">
+              <Faces />
+              <span>Mina added 3 places</span>
             </div>
           </div>
-          <HeroArt />
         </section>
 
-        <section id="demo" className="lp-section lp-demo-section">
-          <SectionHead eyebrow="See it in 30 seconds" title="From a pile of pins to a plan">
-            This is the real workflow, start to finish. Click a step to jump to it.
-          </SectionHead>
-          <div data-reveal style={delay(0.1)}><Demo /></div>
-        </section>
-
-        <section id="features" className="lp-section">
-          <SectionHead eyebrow="Why it's different" title="Built for trips with more than one opinion" />
-          <div className="lp-bento">
-            {FEATURES.map((f, i) => (
-              <article key={f.title} className={`lp-feature ${f.wide ? 'wide' : ''}`} data-reveal style={delay(i * 0.06)}>
-                <div className="lp-feature-art" aria-hidden="true">{f.art}</div>
-                <h3>{f.title}</h3>
-                <p>{f.body}</p>
-              </article>
+        <div className="lp-marquee" aria-label="Plan trips anywhere">
+          <div className="lp-marquee-track">
+            {[...PLACES, ...PLACES].map((p, i) => (
+              <span key={i} className="lp-place" style={{ '--c': DAY_COLORS[i % DAY_COLORS.length] } as CSSProperties} aria-hidden={i >= PLACES.length}>
+                <span className="dot" /> {p}
+              </span>
             ))}
           </div>
+        </div>
+
+        <section id="demo" className="lp-band lp-band-mint">
+          <Wave />
+          <div className="lp-section">
+            <Head tag="How it works" title="Watch a trip come together">A three-day Tokyo plan, start to finish. Tap a step to jump to it.</Head>
+            <div className="lp-demo-wrap" data-reveal style={delay(0.1)}>
+              <span className="lp-sticker lp-sticker-a" aria-hidden="true">Tokyo · 3 days</span>
+              <span className="lp-sticker lp-sticker-b" aria-hidden="true">4 friends</span>
+              <Demo />
+            </div>
+          </div>
+          <Wave flip />
+        </section>
+
+        <section id="features" className="lp-section lp-stories">
+          <Story tag="Collect" color="#B5472A" tint="#FDEBE4" title="Paste whatever you've got" art={<CollectArt />}>
+            Notes-app lists, Google Maps links, the TikTok someone sent at 2 a.m. TravelPal finds the real place and pins
+            it. If a link won't open, it says so and you type the name instead.
+          </Story>
+          <Story tag="Plan" color="#5B4BD0" tint="#ECEAFD" title="Days that make sense on the ground" art={<PlanArt />} flip>
+            Places are grouped by neighborhood and put at the right hour. Lock the dinner reservation, pick a pace, and
+            preview the plan before anything changes.
+          </Story>
+          <Story tag="Decide together" color="#2C64A0" tint="#E3F0FB" title="Suggestions instead of surprise edits" art={<TogetherArt />}>
+            Friends propose changes and talk them over in the comments. Before anyone merges, TravelPal checks whether the
+            change fits the day.
+          </Story>
+        </section>
+
+        <section className="lp-band lp-band-sun">
+          <Wave />
+          <div className="lp-section">
+            <Head tag="Made for" title="Trips like these" />
+            <div className="lp-uses">
+              {USES.map((u, i) => (
+                <article key={u.title} className="lp-use" style={{ background: u.bg, ...delay(i * 0.08) }} data-reveal>
+                  <div className="lp-use-art" aria-hidden="true">{u.art}</div>
+                  <span className="lp-use-where">{u.where}</span>
+                  <h3>{u.title}</h3>
+                  <p>{u.body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+          <Wave flip />
         </section>
 
         <section className="lp-section">
-          <SectionHead eyebrow="Three steps" title="Less spreadsheet, more trip" />
-          <ol className="lp-steps">
-            {STEPS.map((s, i) => (
-              <li key={s.title} data-reveal style={delay(i * 0.1)}>
-                <span className="lp-step-n" style={{ background: DAY_COLORS[i] }}>{i + 1}</span>
-                <h3>{s.title}</h3>
-                <p>{s.body}</p>
-              </li>
+          <Head tag="Also in the box" title="The small stuff that saves arguments" />
+          <div className="lp-extras">
+            {EXTRAS.map((x, i) => (
+              <div key={x.title} className="lp-extra" data-reveal style={delay(i * 0.05)}>
+                <span className="lp-icon" style={{ background: x.bg, color: x.fg }} aria-hidden="true">{x.icon}</span>
+                <div><h3>{x.title}</h3><p>{x.body}</p></div>
+              </div>
             ))}
-          </ol>
+          </div>
+        </section>
+
+        <section id="faq" className="lp-section lp-faq">
+          <Head tag="FAQ" title="Questions people ask" />
+          <div className="lp-faq-list" data-reveal>
+            {FAQ.map(([q, a]) => (
+              <details key={q}>
+                <summary>{q}<span className="lp-plus" aria-hidden="true" /></summary>
+                <p>{a}</p>
+              </details>
+            ))}
+          </div>
         </section>
 
         <section className="lp-final" data-reveal>
-          <Hills />
-          <h2>Where to next?</h2>
-          <p>Start with one destination and a few places. Your friends can pile on later.</p>
-          <Link to="/signup" className="btn lp-big lp-invert">Plan your first trip</Link>
+          <FinalArt />
+          <div className="lp-final-copy">
+            <h2>Where are you headed next?</h2>
+            <p>Start with one city and a handful of places. Add the rest whenever.</p>
+            <Link to="/signup" className="btn lp-btn lp-big lp-light">Plan a trip <Arrow /></Link>
+          </div>
         </section>
       </main>
 
       <footer className="lp-footer">
-        <span className="brand"><Logo /> TravelPal</span>
-        <span className="muted">Plan trips together. Let AI sort out the days.</span>
+        <div className="lp-footer-brand">
+          <span className="brand"><Logo /> TravelPal</span>
+          <p>For people who plan trips in group chats.</p>
+        </div>
+        <nav aria-label="Footer">
+          <div><h4>Product</h4><a href="#demo">How it works</a><a href="#features">Features</a><a href="#faq">FAQ</a></div>
+          <div><h4>Account</h4><Link to="/login">Log in</Link><Link to="/signup">Create an account</Link></div>
+        </nav>
+        <small>© {YEAR} TravelPal</small>
       </footer>
     </div>
   )
 }
 
-function SectionHead({ eyebrow, title, children }: { eyebrow: string; title: string; children?: ReactNode }) {
+function Head({ tag, title, children }: { tag: string; title: string; children?: ReactNode }) {
   return (
     <div className="lp-head" data-reveal>
-      <span className="lp-eyebrow">{eyebrow}</span>
+      <span className="lp-tagline">{tag}</span>
       <h2>{title}</h2>
       {children && <p>{children}</p>}
     </div>
   )
 }
 
-/** Illustrated hills with floating cards from the app, gently bobbing. */
-function HeroArt() {
+function Story({ tag, color, tint, title, art, flip, children }:
+  { tag: string; color: string; tint: string; title: string; art: ReactNode; flip?: boolean; children: ReactNode }) {
   return (
-    <div className="lp-hero-art" aria-hidden="true" data-reveal style={delay(0.2)}>
-      <div className="lp-sky">
-        <Hills />
-        <svg className="lp-trail" viewBox="0 0 520 420">
-          <path d="M60 330 C 140 260, 120 200, 210 190 S 330 120, 420 80" />
-        </svg>
-        <span className="lp-pin" style={{ left: '11%', top: '76%', background: DAY_COLORS[0], ...delay(0.5) }}>1</span>
-        <span className="lp-pin" style={{ left: '39%', top: '43%', background: DAY_COLORS[0], ...delay(0.7) }}>2</span>
-        <span className="lp-pin" style={{ left: '79%', top: '17%', background: DAY_COLORS[1], ...delay(0.9) }}>3</span>
+    <article className={`lp-story${flip ? ' flip' : ''}`}>
+      <div className="lp-story-copy" data-reveal>
+        <span className="lp-tagline" style={{ background: tint, color }}>{tag}</span>
+        <h2>{title}</h2>
+        <p>{children}</p>
       </div>
-      <div className="lp-float lp-f1">
-        <span className="n" style={{ background: DAY_COLORS[1] }}>3</span>
-        <div><b>Golden Gai</b><small>9:00 PM · best after dark</small></div>
+      <div className="lp-story-art" style={{ background: tint }} data-reveal>{art}</div>
+    </article>
+  )
+}
+
+function Faces() {
+  return (
+    <span className="lp-faces">
+      {[['Y', '#FFD9A8'], ['M', '#C9E6FF'], ['K', '#D9F2D0'], ['A', '#F8D3E3']].map(([l, c]) => <i key={l} style={{ background: c }}>{l}</i>)}
+    </span>
+  )
+}
+
+function Wave({ flip }: { flip?: boolean }) {
+  return (
+    <svg className={`lp-wave${flip ? ' flip' : ''}`} viewBox="0 0 1440 60" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 60 L0 30 C 240 0, 480 0, 720 26 S 1200 58, 1440 22 L1440 60 Z" />
+    </svg>
+  )
+}
+
+/* ---- story illustrations (small, interactive) ---- */
+
+function CollectArt() {
+  return (
+    <div className="art-collect" aria-hidden="true">
+      <div className="sources">
+        <div className="src src-notes"><b>Tokyo ideas</b><span>ramen near hotel??</span><span>golden gai</span><span>teamlab (book ahead)</span></div>
+        <div className="src src-link"><span className="src-label">Maps link</span>maps.app.goo.gl/x7Kp…</div>
+        <div className="src src-video"><span className="play">▶</span><span>“best coffee in tokyo”</span></div>
       </div>
-      <div className="lp-float lp-f2">
-        <SparkleIcon size={16} color="var(--accent)" />
-        <div><b>Nikko gets its own day</b><small>125 km away, so it's a day trip</small></div>
-      </div>
-      <div className="lp-float lp-f3">
-        <div className="lp-faces"><i style={{ background: '#FFD9A8' }}>Y</i><i style={{ background: '#C9E6FF' }}>M</i><i style={{ background: '#D9F2D0' }}>K</i></div>
-        <small>Mina suggested 2 places</small>
+      <div className="flow">→</div>
+      <div className="pins">
+        {['Golden Gai', 'teamLab Planets', 'Blue Bottle Kiyosumi'].map((p, i) => (
+          <span key={p} className="pin-chip" style={{ '--c': DAY_COLORS[i], ...delay(i * 0.12) } as CSSProperties}><span className="dot" />{p}</span>
+        ))}
       </div>
     </div>
   )
 }
 
-function Hills() {
+function PlanArt() {
+  const [after, setAfter] = useState(true)
+  const stops = [
+    ['Tsukiji Market', '8:00 AM', 0], ['Senso-ji', '1:30 PM', 0], ['Golden Gai', '9:00 PM', 1], ['Nikko', 'All day', 2],
+  ] as const
+  const shown = after ? stops : [stops[2], stops[3], stops[0], stops[1]]
   return (
-    <svg className="lp-hills" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true">
-      <path d="M0 150 L90 90 L160 130 L240 70 L330 140 L420 80 L520 130 L600 100 L600 200 L0 200 Z" fill="#9FD4CB" />
-      <path d="M0 200 L0 168 C 120 140, 260 190, 380 160 C 470 140, 540 170, 600 156 L600 200 Z" fill="#5DB7AA" />
-    </svg>
+    <div className="art-plan">
+      <div className="segmented" role="group" aria-label="Show itinerary">
+        <button aria-pressed={!after} onClick={() => setAfter(false)}>Before</button>
+        <button aria-pressed={after} onClick={() => setAfter(true)}>After</button>
+      </div>
+      <div className="plan-list" key={String(after)}>
+        {shown.map(([n, t, d], i) => (
+          <div key={n} className="plan-row" style={{ '--c': after ? DAY_COLORS[d] : '#C9C4B8', ...delay(i * 0.06) } as CSSProperties}>
+            <span className="dot" />
+            <b>{n}</b>
+            <small>{after ? `Day ${d + 1} · ${t}` : 'Not planned yet'}</small>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
-const FEATURES = [
-  {
-    title: 'Paste anything',
-    body: 'A list from the group chat, a Google Maps link, a TikTok someone saved. TravelPal finds the places and puts them on the map.',
-    wide: true,
-    art: (
-      <div className="art-paste">
-        <span className="chip">maps.app.goo.gl/…</span>
-        <span className="arrow">→</span>
-        <span className="chip solid">📍 Tsukiji Outer Market</span>
+function TogetherArt() {
+  const [liked, setLiked] = useState(false)
+  return (
+    <div className="art-together">
+      <div className="msg"><i style={{ background: '#C9E6FF' }}>M</i><div><b>Mina</b> suggested <b>Omoide Yokocho</b><p>Yakitori before Golden Gai?</p></div></div>
+      <div className="check"><SparkleIcon size={14} /> Fits Day 2 at 7:30 PM, a 5-minute walk from Golden Gai</div>
+      <div className="msg"><i style={{ background: '#D9F2D0' }}>K</i><div><b>Kenji</b><p>I'm in. Can we skip the sky deck then?</p></div></div>
+      <div className="reacts">
+        <button className={`react${liked ? ' on' : ''}`} aria-pressed={liked} onClick={() => setLiked(!liked)}>👍 {liked ? 3 : 2}</button>
+        <span className="merge">Merge</span>
       </div>
+    </div>
+  )
+}
+
+/* ---- use cases ---- */
+
+const House = ({ x, h, c }: { x: number; h: number; c: string }) => (
+  <g>
+    <rect x={x} y={90 - h} width="34" height={h + 10} fill={c} />
+    <rect x={x + 7} y={100 - h} width="7" height="9" fill="#1C2430" opacity=".22" />
+    <rect x={x + 20} y={100 - h} width="7" height="9" fill="#1C2430" opacity=".22" />
+  </g>
+)
+
+const USES = [
+  {
+    where: 'Lisbon · 4 days', title: 'Six friends, one long weekend', bg: '#FDEBE4',
+    body: 'Everyone sends their list. Nobody has to be the planner.',
+    art: (
+      <svg viewBox="0 0 240 110" preserveAspectRatio="xMidYMid slice">
+        <rect width="240" height="110" fill="#FFD0BF" />
+        <circle cx="196" cy="30" r="15" fill="#FFC94D" />
+        <House x={18} h={40} c="#F2734E" /><House x={54} h={30} c="#FFD66B" /><House x={90} h={46} c="#fff" />
+        <House x={126} h={28} c="#7C6CF0" /><House x={162} h={42} c="#14A098" /><House x={198} h={32} c="#D9548A" />
+        <rect x="0" y="98" width="240" height="12" fill="#E2B74D" />
+        <rect x="40" y="84" width="44" height="14" rx="4" fill="#FFD66B" />
+        <circle cx="50" cy="100" r="4" fill="#1C2430" /><circle cx="74" cy="100" r="4" fill="#1C2430" />
+      </svg>
     ),
   },
   {
-    title: 'Days that make sense',
-    body: 'Places are grouped by neighborhood and set at the right hour: markets early, bars late.',
+    where: 'Kyoto · 6 days', title: 'Three generations, one plan', bg: '#E2F3F0',
+    body: 'A relaxed pace, temples in the cool mornings, everyone back by ten.',
     art: (
-      <div className="art-times">
-        {[['Market', '8:00 AM', 0], ['Museum', '1:30 PM', 0], ['Bar district', '9:00 PM', 1]].map(([n, time, d]) => (
-          <div key={n} className="mini-stop"><span className="dot" style={{ background: DAY_COLORS[d as number] }} />{n}<small>{time}</small></div>
-        ))}
-      </div>
+      <svg viewBox="0 0 240 110" preserveAspectRatio="xMidYMid slice">
+        <rect width="240" height="110" fill="#BFE6DF" />
+        <path d="M0 80 C 60 60, 120 70, 240 56 L240 110 L0 110 Z" fill="#8ED1B7" />
+        <g fill="#E04E3A">
+          <rect x="70" y="28" width="100" height="9" rx="3" /><rect x="80" y="44" width="80" height="6" />
+          <rect x="88" y="37" width="9" height="63" /><rect x="143" y="37" width="9" height="63" />
+        </g>
+        {[[30, 70], [210, 62]].map(([x, y]) => <g key={x}><circle cx={x} cy={y} r="14" fill="#F6B9CF" /><circle cx={x + 8} cy={y + 4} r="9" fill="#F9CDDD" /></g>)}
+      </svg>
     ),
   },
   {
-    title: 'Day trips, spotted',
-    body: "Far-away places get a day of their own instead of being squeezed between two city stops.",
-    art: <div className="art-trip"><span className="chip">Nikko</span><span className="dash" /><span className="chip solid">Day 4 · all day</span></div>,
-  },
-  {
-    title: 'Plan together, live',
-    body: 'Share one link. Everyone sees changes as they happen, and nobody overwrites anyone else.',
-    art: <div className="lp-faces big"><i style={{ background: '#FFD9A8' }}>Y</i><i style={{ background: '#C9E6FF' }}>M</i><i style={{ background: '#D9F2D0' }}>K</i><i style={{ background: '#F8D3E3' }}>A</i></div>,
-  },
-  {
-    title: 'More like this',
-    body: 'Ask for places like the ones you loved. Every suggestion says why it fits you.',
-    art: <div className="art-why"><SparkleIcon size={14} color="var(--accent)" /> Why this? Same pour-over style as your saved café.</div>,
-  },
-  {
-    title: 'Suggestions, not surprises',
-    body: 'Friends propose changes, talk them over, and AI checks whether each one fits before anyone merges it.',
-    wide: true,
+    where: 'Mexico City → Oaxaca · 2 weeks', title: 'A rough idea and no fixed plan', bg: '#ECEAFD',
+    body: 'Add places as you find them and re-plan the days whenever things change.',
     art: (
-      <div className="art-proposal">
-        <span><b>Mina</b> suggests Omoide Yokocho</span>
-        <span className="ok"><SparkleIcon size={13} /> Fits Day 2 at 7:30 PM</span>
-      </div>
+      <svg viewBox="0 0 240 110" preserveAspectRatio="xMidYMid slice">
+        <rect width="240" height="110" fill="#D6D1FA" />
+        <circle cx="60" cy="38" r="17" fill="#FFC94D" />
+        <path d="M0 90 L50 60 L90 82 L140 48 L190 78 L240 58 L240 110 L0 110 Z" fill="#B7A6F2" />
+        <path d="M0 110 C 60 92, 140 104, 240 90 L240 110 Z" fill="#F2734E" />
+        {[150, 200].map((x) => <g key={x} fill="#3FA77F"><rect x={x - 4} y={70} width="8" height="26" rx="4" /><rect x={x - 12} y={76} width="6" height="12" rx="3" /><rect x={x + 6} y={74} width="6" height="12" rx="3" /></g>)}
+      </svg>
     ),
-  },
-  {
-    title: 'Nothing gets lost',
-    body: 'Every change lands in the trip history, and place edits can be undone in one tap.',
-    art: <div className="art-undo"><span>moved Senso-ji to Day 1</span><b>Undo</b></div>,
   },
 ]
 
-const STEPS = [
-  { title: 'Drop in your places', body: 'Type them, paste a list, or paste links. Rough is fine.' },
-  { title: 'Invite your people', body: 'One link. They add favorites and suggest changes.' },
-  { title: 'Let AI lay out the days', body: 'Preview the plan, tweak it, apply it. Lock what must not move.' },
+/* ---- extras ---- */
+
+const ico = (d: ReactNode) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+
+const EXTRAS = [
+  { title: 'Live updates', body: 'Everyone sees changes as they happen.', bg: '#E2F3F0', fg: '#0A5F59', icon: ico(<path d="M13 2 4 14h7l-1 8 9-12h-7z" />) },
+  { title: 'Undo', body: 'Every edit is in the history, and place edits undo in one tap.', bg: '#FDEBE4', fg: '#B5472A', icon: ico(<><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-3" /></>) },
+  { title: 'Map and list in sync', body: 'Tap a stop and the map follows.', bg: '#E3F0FB', fg: '#2C64A0', icon: ico(<><path d="m9 4-6 2v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>) },
+  { title: 'Trip assistant', body: 'Ask “can we fit teamLab on Day 2?” and get a straight answer.', bg: '#ECEAFD', fg: '#5B4BD0', icon: ico(<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />) },
+  { title: 'Invite links', body: 'Share one link. Turn it off any time.', bg: '#FFF1CC', fg: '#7A4F00', icon: ico(<><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></>) },
+  { title: 'More like this', body: 'Found a café you love? Get a few more nearby, with a reason for each.', bg: '#FCE3EC', fg: '#A63266', icon: ico(<><path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z" /><path d="M19 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></>) },
 ]
+
+const FAQ: [string, string][] = [
+  ['Do my friends need an account?', 'Yes. They open your invite link, sign up, and land straight in the trip.'],
+  ['Will the AI change my plan without asking?', 'No. The optimizer and the assistant only suggest. You see a preview, nothing changes until you apply it, and you can undo it afterwards.'],
+  ['What happens if two of us edit at the same time?', "Whoever saves second is shown the latest version first, so nobody's changes get silently overwritten."],
+  ['Where does place information come from?', "Map data comes from OpenStreetMap. Opening hours and reviews aren't verified yet, so check before you go."],
+  ['Can I use it for a solo trip?', 'Of course. Same planning tools, fewer opinions.'],
+]
+
+function FinalArt() {
+  return (
+    <svg className="lp-final-art" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+      <defs>
+        <linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#0E7C74" />
+          <stop offset=".5" stopColor="#3FA79B" />
+          <stop offset=".78" stopColor="#F7B27F" />
+          <stop offset="1" stopColor="#FFD38F" />
+        </linearGradient>
+      </defs>
+      <rect width="1200" height="420" fill="url(#dusk)" />
+      {[[160, 70], [300, 120], [420, 50], [760, 90], [1040, 60], [1120, 130]].map(([x, y]) => <circle key={x} cx={x} cy={y} r="2" fill="#fff" opacity=".75" />)}
+      <circle cx="930" cy="292" r="84" fill="#FFC94D" />
+      <circle cx="930" cy="292" r="120" fill="#FFC94D" opacity=".18" />
+      <g fill="#fff" opacity=".85">
+        <ellipse cx="200" cy="230" rx="60" ry="14" /><ellipse cx="236" cy="220" rx="34" ry="16" />
+        <ellipse cx="1010" cy="200" rx="50" ry="12" /><ellipse cx="984" cy="192" rx="28" ry="13" />
+      </g>
+      <path d="M0 330 L140 250 L240 300 L380 220 L520 300 L640 240 L780 310 L920 250 L1060 300 L1200 260 L1200 420 L0 420 Z" fill="#7C6CF0" opacity=".45" />
+      <path d="M0 362 C 180 320, 380 360, 560 340 S 900 300, 1200 344 L1200 420 L0 420 Z" fill="#14A098" />
+      <path d="M0 392 C 220 360, 460 404, 700 380 S 1040 366, 1200 388 L1200 420 L0 420 Z" fill="#0A5F59" />
+      {[[120, 380], [150, 386], [1080, 372], [1110, 380]].map(([x, y]) => (
+        <path key={x} d={`M${x} ${y - 30} L${x + 12} ${y} L${x - 12} ${y} Z`} fill="#06463F" />
+      ))}
+    </svg>
+  )
+}
