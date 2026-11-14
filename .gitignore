@@ -36,3 +36,9 @@ test-results/
 .terraform/
 *.tfstate
 *.tfstate.*
+
+# Maven
+target/
+
+# Local agent/editor config
+.claude/

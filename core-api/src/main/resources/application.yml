@@ -1,0 +1,41 @@
+spring:
+  application.name: core-api
+  threads.virtual.enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/travelpal}
+    username: ${DB_USER:travelpal}
+    password: ${DB_PASSWORD:travelpal}
+  jpa:
+    open-in-view: false
+    hibernate.ddl-auto: validate
+  mvc.problemdetails.enabled: true
+  # Rate limits, AI quotas, ended sessions and live-update fan-out are shared through Redis (rediss:// in AWS).
+  data.redis.url: ${REDIS_URL:redis://localhost:6379}
+  # Omitted booleans (e.g. "locked") mean false; Jackson 3 rejects them by default.
+  jackson.deserialization.fail-on-null-for-primitives: false
+server:
+  port: ${PORT:8081}
+  forward-headers-strategy: native
+management.endpoints.web.exposure.include: health
+travelpal:
+  # Throwaway signing keys when the key settings are empty. Fine locally; AWS sets DEV_KEYS=false so a missing key stops startup.
+  dev-keys: ${DEV_KEYS:true}
+  jwt:
+    # PEM (PKCS#8 / X.509) EC P-256 keys. Unset = ephemeral dev key (tokens die on restart, single instance only).
+    private-key: ${JWT_PRIVATE_KEY:}
+    public-key: ${JWT_PUBLIC_KEY:}
+    access-ttl: 15m
+    refresh-ttl: 30d
+  cookie-secure: ${COOKIE_SECURE:true}
+  # Header with the real client IP from a trusted edge (CloudFront-Viewer-Address in AWS). Empty = connection address.
+  client-ip-header: ${CLIENT_IP_HEADER:}
+  # Private EC P-256 JWK (JSON) for core-api -> ai-service tokens. Unset = new key per process (dev only).
+  internal-jwk: ${INTERNAL_JWT_PRIVATE_JWK:}
+  places-url: ${PLACES_URL:https://photon.komoot.io}
+  ai:
+    service-url: ${AI_SERVICE_URL:http://localhost:8090}
+    # LocalStack locally; set SQS_ENDPOINT empty in AWS to use the real endpoint and IAM role credentials.
+    sqs-endpoint: ${SQS_ENDPOINT:http://localhost:4566}
+    region: ${AWS_REGION:us-east-1}
+    jobs-queue: ${OPTIMIZE_JOBS_QUEUE:optimize-jobs}
+    results-queue: ${OPTIMIZE_RESULTS_QUEUE:optimize-results}

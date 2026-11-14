@@ -1,0 +1,30 @@
+[project]
+name = "ai-service"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.120",
+    "uvicorn[standard]>=0.38",
+    "pyjwt[crypto]>=2.10",
+    "anthropic>=1.0",
+    "boto3>=1.40",
+    "python-dotenv>=1.1",
+    "voyageai>=0.3",
+    "httpx>=0.28",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+    "pytest-cov>=7.0",
+    "httpx>=0.28",
+    "ruff>=0.14",
+    "moto[sqs]>=5.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = "--cov=app --cov-report=term-missing --cov-fail-under=80"
+
+[tool.ruff]
+line-length = 120

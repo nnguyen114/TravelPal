@@ -1,0 +1,25 @@
+package com.travelpal.optimize;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.travelpal.IntegrationTest;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.server.ResponseStatusException;
+
+class AiQuotaTest extends IntegrationTest {
+    @Autowired
+    AiQuota q;
+
+    @Test
+    void capsEachUserAndKindPerHour() {
+        UUID u = UUID.randomUUID();
+        for (int i = 0; i < AiQuota.Kind.OPTIMIZE.perHour; i++) {
+            q.spend(u, AiQuota.Kind.OPTIMIZE);
+        }
+        assertThatThrownBy(() -> q.spend(u, AiQuota.Kind.OPTIMIZE)).isInstanceOf(ResponseStatusException.class).hasMessageContaining("429");
+        q.spend(u, AiQuota.Kind.ASSISTANT);
+        q.spend(UUID.randomUUID(), AiQuota.Kind.OPTIMIZE);
+    }
+}
