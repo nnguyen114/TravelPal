@@ -82,3 +82,12 @@ it('turns the departures board into the first step of planning', async () => {
   expect(go()).toHaveAttribute('href', '/signup?to=Tokyo')
   expect(flights[0]).toHaveTextContent('10:05')
 })
+
+it('compares TravelPal with other planners row by row', () => {
+  renderLanding()
+  const table = screen.getByRole('table', { name: 'What other planners leave to you' })
+  const rows = within(table).getAllByRole('row').slice(1)
+  expect(rows.map((r) => within(r).getByRole('rowheader').textContent))
+    .toEqual(['Time of day', 'Day trips', 'Group changes', 'Saved videos', 'Recommendations'])
+  expect(rows[0]).toHaveTextContent('bars after dark')
+})

@@ -86,6 +86,27 @@ export function Landing() {
           <Wave flip />
         </section>
 
+        <section className="lp-section lp-compare-section" aria-labelledby="compare-title">
+          <div className="lp-head" data-reveal>
+            <span className="lp-tagline">Why TravelPal</span>
+            <h2 id="compare-title">What other planners leave to you</h2>
+          </div>
+          <table className="lp-compare" aria-labelledby="compare-title" data-reveal>
+            <thead>
+              <tr><th scope="col"><span className="sr-only">Situation</span></th><th scope="col">Most trip planners</th><th scope="col" className="us">TravelPal</th></tr>
+            </thead>
+            <tbody>
+              {COMPARE.map(([topic, them, us], i) => (
+                <tr key={topic} style={{ '--c': DAY_COLORS[i % DAY_COLORS.length] } as CSSProperties}>
+                  <th scope="row">{topic}</th>
+                  <td className="them"><span className="mark no" aria-hidden="true">–</span>{them}</td>
+                  <td className="us"><span className="mark yes" aria-hidden="true">✓</span>{us}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
         <section id="features" className="lp-section lp-stories">
           <Story tag="Collect" color="#B5472A" tint="#FDEBE4" title="Paste whatever you've got" art={<CollectArt />}>
             Notes-app lists, Google Maps links, the TikTok someone sent at 2 a.m. TravelPal finds the real place and pins
@@ -117,18 +138,6 @@ export function Landing() {
             </div>
           </div>
           <Wave flip />
-        </section>
-
-        <section className="lp-section">
-          <Head tag="Also in the box" title="The small stuff that saves arguments" />
-          <div className="lp-extras">
-            {EXTRAS.map((x, i) => (
-              <div key={x.title} className="lp-extra" data-reveal style={delay(i * 0.05)}>
-                <span className="lp-icon" style={{ background: x.bg, color: x.fg }} aria-hidden="true">{x.icon}</span>
-                <div><h3>{x.title}</h3><p>{x.body}</p></div>
-              </div>
-            ))}
-          </div>
         </section>
 
         <section id="faq" className="lp-section lp-faq">
@@ -316,17 +325,14 @@ const USES = [
   },
 ]
 
-/* ---- extras ---- */
-
-const ico = (d: ReactNode) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
-
-const EXTRAS = [
-  { title: 'Live updates', body: 'Everyone sees changes as they happen.', bg: '#E2F3F0', fg: '#0A5F59', icon: ico(<path d="M13 2 4 14h7l-1 8 9-12h-7z" />) },
-  { title: 'Undo', body: 'Every edit is in the history, and place edits undo in one tap.', bg: '#FDEBE4', fg: '#B5472A', icon: ico(<><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-3" /></>) },
-  { title: 'Map and list in sync', body: 'Tap a stop and the map follows.', bg: '#E3F0FB', fg: '#2C64A0', icon: ico(<><path d="m9 4-6 2v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></>) },
-  { title: 'Trip assistant', body: 'Ask “can we fit teamLab on Day 2?” and get a straight answer.', bg: '#ECEAFD', fg: '#5B4BD0', icon: ico(<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />) },
-  { title: 'Invite links', body: 'Share one link. Turn it off any time.', bg: '#FFF1CC', fg: '#7A4F00', icon: ico(<><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></>) },
-  { title: 'More like this', body: 'Found a café you love? Get a few more nearby, with a reason for each.', bg: '#FCE3EC', fg: '#A63266', icon: ico(<><path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z" /><path d="M19 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></>) },
+// Only differences that hold against the popular planners we checked (live editing, maps, budgets and route
+// ordering are common, so they aren't here).
+const COMPARE: [string, string, string][] = [
+  ['Time of day', 'Puts stops in the shortest order.', 'Puts each place at its hour: markets early, bars after dark.'],
+  ['Day trips', 'Leaves the mountain town wedged between two museums.', 'Spots far-off places and gives them a day of their own.'],
+  ['Group changes', 'Anyone with access edits the plan directly.', "Friends suggest a change, talk it over, see whether it fits, then merge."],
+  ['Saved videos', 'You hunt down the place name yourself.', 'Paste the TikTok or Instagram link and the place is found for you.'],
+  ['Recommendations', "Shows what's popular nearby.", 'Finds more like the places you picked, with a reason for each.'],
 ]
 
 const FAQ: [string, string][] = [
