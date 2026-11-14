@@ -9,10 +9,6 @@ import com.travelpal.optimize.TripSnapshot;
 import com.travelpal.trip.TripAccess;
 import com.travelpal.trip.TripRole;
 import com.travelpal.trip.TripService;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -183,12 +179,7 @@ public class ProposalService {
         }));
         quota.spend(userId, AiQuota.Kind.OPTIMIZE);
         String body = json.writeValueAsString(Map.of("trip", snapshots.build(userId, tripId).data(), "changes", changes(p)));
-        String result;
-        try (InputStream in = ai.post("/internal/impact", body, userId, Duration.ofSeconds(90), "The impact check")) {
-            result = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        String result = ai.call("/internal/impact", body, userId, Duration.ofSeconds(90), "The impact check");
         return tx.execute(s -> {
             Proposal fresh = find(tripId, id);
             fresh.impact(result, userId);

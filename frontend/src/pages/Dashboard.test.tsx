@@ -103,3 +103,14 @@ it('opens Create Trip already filled in when a city was picked on the landing pa
   expect(await within(dialog).findByRole('button', { name: /Lisbon/ })).toBeInTheDocument()
   expect(calls.some((c) => c.url.startsWith('/api/places/search?q=Lisbon'))).toBe(true)
 })
+
+it('says when place search is down instead of showing no matches', async () => {
+  mockApi({
+    'GET /api/trips': () => json(200, []),
+    'GET /api/places/search': () => json(503, { detail: 'Place search is unavailable right now. Try again in a minute.' }),
+  })
+  renderAt('/?to=Lisbon', routes)
+  const dialog = await screen.findByRole('dialog', { name: 'Create a trip' })
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('Place search is unavailable right now')
+  expect(within(dialog).queryByText('Not finding it? It will be added as typed.')).not.toBeInTheDocument()
+})

@@ -8,7 +8,7 @@ setWorkerUrl(workerUrl)
 import { useEffect, useRef } from 'react'
 import type { Destination } from '../types'
 
-export type MapDay = { color: string; stops: Destination[] }
+type MapDay = { color: string; stops: Destination[] }
 type Props = { days: MapDay[]; activeDay: number | null; selectedId: string | null; onSelect: (id: string) => void; center?: [number, number] }
 
 // ponytail: OpenFreeMap tiles are free and keyless; move to a paid tile provider (MapTiler etc.) if we need an SLA.

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { api } from './api'
 import type { Mode, Preview } from './types'
 
-export type OptimizeInput = { mode: Mode; scope: 'TRIP' | 'DAY'; dayIndex?: number | null; instructions?: string | null }
+type OptimizeInput = { mode: Mode; scope: 'TRIP' | 'DAY'; dayIndex?: number | null; instructions?: string | null }
 
 /** Starts an optimizer run and opens its preview. Nothing changes until the preview is applied. */
 export function useOptimize(tripId: string, replace = false) {
@@ -14,7 +14,7 @@ export function useOptimize(tripId: string, replace = false) {
   })
 }
 
-export const MODES: [Mode, string][] = [['RELAXED', 'Relaxed'], ['BALANCED', 'Balanced'], ['PACKED', 'Packed']]
+const MODES: [Mode, string][] = [['RELAXED', 'Relaxed'], ['BALANCED', 'Balanced'], ['PACKED', 'Packed']]
 
 export function PaceSwitch({ value, onChange, disabled }: { value: Mode; onChange: (m: Mode) => void; disabled?: boolean }) {
   return (

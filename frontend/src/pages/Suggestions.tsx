@@ -134,7 +134,7 @@ function Detail({ trip, p, onStatus }: { trip: Trip; p: Proposal; onStatus: (s: 
 
 type Draft = { kind: 'ADD' | 'MOVE' | 'REMOVE'; place?: Place | null; name?: string; destinationId?: string; day: string }
 
-export function NewProposalDialog({ trip, destinations, onClose }: { trip: Trip; destinations: Destination[]; onClose: () => void }) {
+function NewProposalDialog({ trip, destinations, onClose }: { trip: Trip; destinations: Destination[]; onClose: () => void }) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [drafts, setDrafts] = useState<Draft[]>([{ kind: 'ADD', day: '' }])

@@ -25,13 +25,19 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
     setBusy(true)
     let unlocated = 0
     let failed = 0
+    let searchDown = false
     for (const place of p.places) {
       const q = new URLSearchParams({ q: place.name })
       if (bias) {
         q.set('lat', String(bias.lat))
         q.set('lng', String(bias.lng))
       }
-      const match = (await api<Place[]>(`/api/places/search?${q}`).catch(() => []))[0]
+      let match: Place | undefined
+      try {
+        match = (await api<Place[]>(`/api/places/search?${q}`))[0]
+      } catch {
+        searchDown = true // still add it by name; the traveler can locate it later
+      }
       if (!match) unlocated++
       await api(`/api/trips/${trip.id}/destinations`, {
         method: 'POST',
@@ -46,7 +52,7 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
     setBusy(false)
     setDone([
       `Added ${p.places.length - failed} of ${p.places.length}.`,
-      unlocated ? `${unlocated} without a map location yet.` : '',
+      unlocated ? `${unlocated} without a map location yet${searchDown ? ' (place search is unavailable right now)' : ''}.` : '',
       failed ? `${failed} already in the trip or couldn't be added.` : '',
     ].filter(Boolean).join(' '))
   }

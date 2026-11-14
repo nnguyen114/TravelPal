@@ -6,10 +6,10 @@ from typing import Annotated
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from app import chat, discovery, impact, links, security, worker
+from app import chat, discovery, impact, links, places, security, worker
 from app.security import require_internal
 
 # Local dev: keys live in the repo-root .env (gitignored). Real env vars win.
@@ -27,6 +27,12 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="TravelPal AI service", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+
+
+@app.exception_handler(places.Unavailable)
+def places_unavailable(_request, _exc) -> JSONResponse:
+    # core-api turns any non-200 into "<feature> is unavailable right now" for the traveler.
+    return JSONResponse(status_code=503, content={"detail": "Place search is unavailable right now."})
 
 
 @app.get("/health")

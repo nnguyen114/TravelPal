@@ -6,6 +6,7 @@ import com.travelpal.trip.TripAccess;
 import com.travelpal.trip.TripRole;
 import com.travelpal.trip.TripService;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Limit;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,7 +24,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class DestinationService {
     public record Input(String name, String address, Double lat, Double lng, String providerId, String notes,
                         Integer durationMin, Integer dayIndex, LocalTime startTime, boolean locked, Flexibility flexibility,
-                        LocalTime visitAfter, LocalTime visitBefore, boolean dayTrip) {}
+                        LocalTime visitAfter, LocalTime visitBefore, boolean dayTrip) {
+        /** The same place on another day (null = unscheduled) and time. */
+        Input at(Integer day, LocalTime time) {
+            return new Input(name, address, lat, lng, providerId, notes, durationMin, day, time, locked, flexibility,
+                visitAfter, visitBefore, dayTrip);
+        }
+    }
 
     public record Hint(UUID id, LocalTime visitAfter, LocalTime visitBefore, boolean dayTrip) {}
 
@@ -58,7 +66,7 @@ public class DestinationService {
 
     @Transactional(readOnly = true)
     public List<Destination> ownPicks(UUID userId, int limit) {
-        return repo.ownPicks(userId, org.springframework.data.domain.Limit.of(limit));
+        return repo.ownPicks(userId, Limit.of(limit));
     }
 
     @Transactional(readOnly = true)
@@ -99,10 +107,7 @@ public class DestinationService {
     @Transactional
     public Destination move(UUID userId, UUID tripId, UUID id, long version, Integer dayIndex, LocalTime startTime) {
         access.require(tripId, userId, TripRole.EDITOR);
-        Input current = Snapshot.of(find(tripId, id)).input();
-        return update(userId, tripId, id, version, new Input(current.name(), current.address(), current.lat(), current.lng(),
-            current.providerId(), current.notes(), current.durationMin(), dayIndex, startTime, current.locked(), current.flexibility(),
-            current.visitAfter(), current.visitBefore(), current.dayTrip()));
+        return update(userId, tripId, id, version, Snapshot.of(find(tripId, id)).input().at(dayIndex, startTime));
     }
 
     @Transactional
@@ -141,8 +146,8 @@ public class DestinationService {
         access.require(tripId, userId, TripRole.EDITOR);
         Map<UUID, Destination> all = repo.findByTrip(tripId).stream().collect(Collectors.toMap(Destination::getId, Function.identity()));
         int days = trips.dayCount(tripId);
-        List<Placement> before = new java.util.ArrayList<>();
-        List<Destination> changed = new java.util.ArrayList<>();
+        List<Placement> before = new ArrayList<>();
+        List<Destination> changed = new ArrayList<>();
         for (PlanItem i : items) {
             Destination d = all.get(i.id());
             if (d == null || (i.dayIndex() != null && (i.dayIndex() < 0 || i.dayIndex() >= days))) {
@@ -241,10 +246,14 @@ public class DestinationService {
         return ids.stream().map(onDay::get).toList();
     }
 
+    /** Validates first, then changes the entity, so a rejected edit never leaves it half-updated. */
     private void apply(Destination d, Input in) {
         Integer day = in.dayIndex();
         if (day != null && (day < 0 || day >= trips.dayCount(d.getTripId()))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Day is outside the trip");
+        }
+        if (in.visitAfter() != null && in.visitBefore() != null && !in.visitAfter().isBefore(in.visitBefore())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Best-time window must start before it ends");
         }
         if (day == null) {
             d.schedule(null, null);
@@ -252,9 +261,6 @@ public class DestinationService {
             d.schedule(day, repo.maxPosition(d.getTripId(), day) + 1);
         }
         d.details(in.name(), in.address(), in.lat(), in.lng(), in.notes(), in.durationMin(), in.startTime(), in.locked(), in.flexibility());
-        if (in.visitAfter() != null && in.visitBefore() != null && !in.visitAfter().isBefore(in.visitBefore())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Best-time window must start before it ends");
-        }
         d.hints(in.visitAfter(), in.visitBefore(), in.dayTrip());
     }
 
