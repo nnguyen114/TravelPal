@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router'
 import { useAuth } from '../auth'
 import { Logo } from '../icons'
 
-export function AuthPage() {
+export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'register' }) {
   const { login, register } = useAuth()
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [mode, setMode] = useState<'login' | 'register'>(initialMode)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -27,7 +28,7 @@ export function AuthPage() {
 
   return (
     <main className="page" style={{ maxWidth: 440, paddingTop: 80 }}>
-      <div className="brand" style={{ marginBottom: 28 }}><Logo /> TravelPal</div>
+      <Link to="/" className="brand" style={{ marginBottom: 28 }}><Logo /> TravelPal</Link>
       <h1 style={{ fontSize: 32, fontWeight: 800 }}>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
       <p className="muted" style={{ marginTop: 6 }}>Plan trips together. Let AI sort out the days.</p>
       <form onSubmit={submit} className="card" style={{ marginTop: 24, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
