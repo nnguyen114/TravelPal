@@ -157,7 +157,8 @@ class HistoryApiTest extends IntegrationTest {
         stream.heartbeat();
         // The change reaches this task through Redis pub/sub, so it lands a moment later.
         long deadline = System.currentTimeMillis() + 5000;
-        while (!sse.getResponse().getContentAsString().contains("event:changed") && System.currentTimeMillis() < deadline) {
+        // Wait for the event's data, not just its name: the two can be written separately.
+        while (!sse.getResponse().getContentAsString().contains(who.userId().toString()) && System.currentTimeMillis() < deadline) {
             Thread.onSpinWait();
         }
         String body = sse.getResponse().getContentAsString();
