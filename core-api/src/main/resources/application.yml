@@ -35,7 +35,9 @@ travelpal:
   client-ip-header: ${CLIENT_IP_HEADER:}
   # Private EC P-256 JWK (JSON) for core-api -> ai-service tokens. Unset = new key per process (dev only).
   internal-jwk: ${INTERNAL_JWT_PRIVATE_JWK:}
-  places-url: ${PLACES_URL:https://photon.komoot.io}
+  # Place search (Geoapify). Without a key, search answers "unavailable" and places can still be typed in.
+  places-url: https://api.geoapify.com
+  places-api-key: ${PLACES_API_KEY:}
   ai:
     service-url: ${AI_SERVICE_URL:http://localhost:8090}
     # sqs (AWS, LocalStack locally) or http (no queue service: jobs go straight to ai-service, e.g. on Render)

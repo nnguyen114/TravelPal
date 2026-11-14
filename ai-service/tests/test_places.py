@@ -8,23 +8,47 @@ def client(handler):
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def test_maps_features_to_places_and_skips_nameless_ones():
+def test_text_search_uses_the_geocoder_and_maps_results():
     seen = {}
 
     def handler(r):
-        seen.update(r.url.params)
-        return httpx.Response(200, json={"features": [
-            {"geometry": {"coordinates": [139.79, 35.71]},
-             "properties": {"name": " Senso-ji ", "osm_type": "W", "osm_id": 1, "osm_value": "place_of_worship", "city": "Tokyo"}},
-            {"geometry": {"coordinates": [0, 0]}, "properties": {"osm_type": "N", "osm_id": 2}},
+        seen.update(path=r.url.path, **r.url.params)
+        return httpx.Response(200, json={"results": [
+            {"name": " Senso-ji ", "lat": 35.71, "lon": 139.79, "place_id": "abc", "category": "tourism.sights.place_of_worship",
+             "address_line2": "Asakusa, Taito, Tokyo, Japan"},
+            {"address_line1": "Lisbon", "lat": 38.7, "lon": -9.1, "place_id": "lis", "address_line2": "Portugal"},
+            {"lat": 0, "lon": 0, "place_id": "nameless"},
         ]})
-    out = places.search("senso", near={"lat": 35.7, "lng": 139.8}, osm_tag="amenity:cafe", http=client(handler))
-    assert out == [{"name": "Senso-ji", "lat": 35.71, "lng": 139.79, "providerId": "osm:W1", "category": "place of worship",
-                    "address": "Tokyo"}]
-    assert seen["lat"] == "35.7" and seen["lon"] == "139.8" and seen["osm_tag"] == "amenity:cafe" and "bbox" not in seen
+    out = places.search("senso", near={"lat": 35.7, "lng": 139.8}, http=client(handler))
+    assert out == [
+        {"name": "Senso-ji", "lat": 35.71, "lng": 139.79, "providerId": "geoapify:abc", "category": "place of worship",
+         "address": "Asakusa, Taito, Tokyo, Japan"},
+        {"name": "Lisbon", "lat": 38.7, "lng": -9.1, "providerId": "geoapify:lis", "category": "", "address": "Portugal"},
+    ]
+    assert seen["path"] == "/v1/geocode/search" and seen["text"] == "senso" and seen["bias"] == "proximity:139.8,35.7"
+    assert seen["apiKey"] == "test-key" and "filter" not in seen
 
 
-@pytest.mark.parametrize("response", [httpx.Response(429), httpx.Response(200, text="<html>blocked</html>")])
-def test_throttling_or_garbage_is_unavailable_not_empty(response):
+def test_category_search_uses_the_places_api():
+    seen = {}
+
+    def handler(r):
+        seen.update(path=r.url.path, **r.url.params)
+        return httpx.Response(200, json={"features": [{"properties": {
+            "name": "Fuglen", "lat": 35.66, "lon": 139.69, "place_id": "f", "categories": ["catering", "catering.cafe.coffee_shop", "internet_access.limited", "dogs.yes"]}}]})
+    out = places.search("coffee", bbox="139.6,35.6,139.8,35.8", category="catering.cafe", http=client(handler))
+    assert out[0]["category"] == "coffee shop" and out[0]["providerId"] == "geoapify:f"
+    assert seen["path"] == "/v2/places" and seen["categories"] == "catering.cafe" and seen["filter"] == "rect:139.6,35.6,139.8,35.8"
+
+
+@pytest.mark.parametrize("response", [httpx.Response(401), httpx.Response(429), httpx.Response(200, text="<html>oops</html>")])
+def test_failures_are_unavailable_not_empty(response, caplog):
     with pytest.raises(places.Unavailable):
         places.search("x", http=client(lambda r: response))
+    assert "test-key" not in caplog.text  # the key is in the URL; logs must never carry it
+
+
+def test_no_key_means_unavailable(monkeypatch):
+    monkeypatch.delenv("PLACES_API_KEY")
+    with pytest.raises(places.Unavailable):
+        places.search("x", http=client(lambda r: 1 / 0))

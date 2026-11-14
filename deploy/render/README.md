@@ -32,6 +32,7 @@ Both of these are configuration choices; the code is the same.
    | `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `INTERNAL_JWT_PRIVATE_JWK` | from `keys.local.env` |
    | `INTERNAL_JWT_PUBLIC_KEY` | from `keys.local.env` (for `travelpal-ai`) |
    | `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY` | your API keys |
+   | `PLACES_API_KEY` | your Geoapify key (geoapify.com, free tier), on **both** services |
    | `AI_SERVICE_URL` | `https://travelpal-ai.onrender.com` |
 
    If Render gives the AI service a different address (it adds a suffix when the name is taken), set `AI_SERVICE_URL` to that address afterwards.

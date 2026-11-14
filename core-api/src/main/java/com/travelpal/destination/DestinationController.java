@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class DestinationController {
     public record DestinationRequest(@NotBlank @Size(max = 200) String name, @Size(max = 300) String address,
                                      @Min(-90) @Max(90) Double lat, @Min(-180) @Max(180) Double lng,
-                                     @Size(max = 120) String providerId, @Size(max = 2000) String notes,
+                                     @Size(max = 300) String providerId, @Size(max = 2000) String notes,
                                      @Min(5) @Max(1440) Integer durationMin, Integer dayIndex, LocalTime startTime,
                                      boolean locked, Flexibility flexibility, Long version,
                                      LocalTime visitAfter, LocalTime visitBefore, boolean dayTrip) {

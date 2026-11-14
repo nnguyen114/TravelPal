@@ -99,7 +99,8 @@ class DestinationApiTest extends IntegrationTest {
 
     @Test
     void sameProviderPlaceCannotBeAddedTwice() throws Exception {
-        String body = "{\"name\":\"Senso-ji\",\"providerId\":\"osm:N123\"}";
+        // Geoapify place ids run to ~200 characters.
+        String body = "{\"name\":\"Senso-ji\",\"providerId\":\"geoapify:%s\"}".formatted("5".repeat(200));
         mvc.perform(json(post(base + "/destinations"), who, body)).andExpect(status().isCreated());
         mvc.perform(json(post(base + "/destinations"), who, body)).andExpect(status().isConflict());
     }

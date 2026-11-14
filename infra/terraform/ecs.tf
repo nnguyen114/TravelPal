@@ -192,6 +192,7 @@ resource "aws_ecs_task_definition" "core_api" {
       { name = "JWT_PRIVATE_KEY", valueFrom = local.secret["jwt-private-key"] },
       { name = "JWT_PUBLIC_KEY", valueFrom = local.secret["jwt-public-key"] },
       { name = "INTERNAL_JWT_PRIVATE_JWK", valueFrom = local.secret["internal-jwk"] },
+      { name = "PLACES_API_KEY", valueFrom = local.secret["places-api-key"] },
     ]
   }])
 }
@@ -221,6 +222,7 @@ resource "aws_ecs_task_definition" "ai_service" {
     secrets = [
       { name = "ANTHROPIC_API_KEY", valueFrom = local.secret["anthropic-api-key"] },
       { name = "VOYAGE_API_KEY", valueFrom = local.secret["voyage-api-key"] },
+      { name = "PLACES_API_KEY", valueFrom = local.secret["places-api-key"] },
     ]
   }])
 }

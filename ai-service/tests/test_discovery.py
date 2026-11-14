@@ -10,21 +10,25 @@ from app.main import app
 CENTER = {"lat": 35.67, "lng": 139.70}
 
 
-def feature(name, lat, lng, osm_id, value="cafe", district="Harajuku"):
-    return {"geometry": {"coordinates": [lng, lat]},
-            "properties": {"name": name, "osm_type": "N", "osm_id": osm_id, "osm_value": value, "district": district, "city": "Tokyo"}}
+def feature(name, lat, lng, pid, category="catering.cafe", area="Harajuku, Tokyo"):
+    """A Places API feature; the geocoder answers text searches with the same properties as flat results."""
+    return {"properties": {"name": name, "lat": lat, "lon": lng, "place_id": pid, "categories": ["catering", category],
+                           "address_line2": area}}
 
 
-PHOTON = [feature("Koffee Mameya", 35.6680, 139.7080, 1), feature("Chain Coffee", 35.6700, 139.7010, 2),
-          feature("Far Roastery", 35.7300, 139.8000, 3), feature("Bakery Cafe", 35.6690, 139.7020, 4, "bakery"),
-          feature(None, 35.67, 139.70, 5), feature("Koffee Mameya", 35.6680, 139.7080, 1),
-          feature("Second hand clothes", 35.67, 139.70, 6, "clothes"), feature("Cafe", 35.67, 139.70, 7)]
+PLACES = [feature("Koffee Mameya", 35.6680, 139.7080, "p1"), feature("Chain Coffee", 35.6700, 139.7010, "p2"),
+          feature("Far Roastery", 35.7300, 139.8000, "p3"),
+          feature("Bakery Cafe", 35.6690, 139.7020, "p4", "commercial.food_and_drink.bakery"),
+          feature(None, 35.67, 139.70, "p5"), feature("Koffee Mameya", 35.6680, 139.7080, "p1"),
+          feature("Second hand clothes", 35.67, 139.70, "p6", "commercial.clothing"), feature("Cafe", 35.67, 139.70, "p7")]
 
 
-def photon(calls):
+def geoapify(calls):
     def handler(request: httpx.Request):
-        calls.append(dict(request.url.params))
-        return httpx.Response(200, json={"features": PHOTON})
+        calls.append({"path": request.url.path, **dict(request.url.params)})
+        if request.url.path == "/v2/places":
+            return httpx.Response(200, json={"type": "FeatureCollection", "features": PLACES})
+        return httpx.Response(200, json={"results": [f["properties"] for f in PLACES]})
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
@@ -39,8 +43,9 @@ def fake_vectors(texts):
 
 def test_keyless_fallback_searches_the_request_and_sorts_by_distance():
     calls = []
-    out = discovery.discover({"request": "coffee", "center": CENTER, "exclude": [{"name": "chain coffee"}]}, photon(calls))
-    assert calls[0]["q"] == "coffee" and "osm_tag" not in calls[0] and calls[0]["bbox"].count(",") == 3
+    out = discovery.discover({"request": "coffee", "center": CENTER, "exclude": [{"name": "chain coffee"}]}, geoapify(calls))
+    assert calls[0]["path"] == "/v1/geocode/search" and calls[0]["text"] == "coffee" and "categories" not in calls[0]
+    assert calls[0]["filter"].startswith("rect:") and calls[0]["filter"].count(",") == 3 and calls[0]["apiKey"] == "test-key"
     names = [s["name"] for s in out["suggestions"]]
     assert "Chain Coffee" not in names and names.count("Koffee Mameya") == 1
     assert not {"Second hand clothes", "Cafe"} & set(names)
@@ -52,8 +57,8 @@ def test_keyless_fallback_searches_the_request_and_sorts_by_distance():
 def test_claude_plans_voyage_ranks_with_diversity_and_claude_explains(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     answers = iter([
-        {"vibe": "independent, design-led specialty coffee", "searches": [{"q": "specialty coffee", "osm_tag": "amenity:cafe"},
-                                                                          {"q": "roastery", "osm_tag": "bad tag!"}]},
+        {"vibe": "independent, design-led specialty coffee", "searches": [{"q": "specialty coffee", "category": "catering.cafe"},
+                                                                          {"q": "roastery", "category": "bad category!"}]},
         {"reasons": [{"n": 0, "why": "Tiny independent roaster near your saved cafes.", "fits": True},
                      {"n": 9, "why": "ignored", "fits": True}, {"n": 2, "why": "A chain.", "fits": False}]},
     ])
@@ -62,9 +67,11 @@ def test_claude_plans_voyage_ranks_with_diversity_and_claude_explains(monkeypatc
     calls = []
     out = discovery.discover({"request": "chic cafes like the ones I saved", "center": CENTER, "count": 3,
                               "taste": [{"name": "Fuglen", "category": "cafe"}], "seeds": [{"name": "Onibus Coffee", "category": "cafe"}],
-                              "exclude": [{"providerId": "osm:N2"}]}, photon(calls))
-    assert calls[0]["osm_tag"] == "amenity:cafe" and "osm_tag" not in calls[1]
-    assert calls[2] == {**calls[2], "q": "cafe", "osm_tag": "amenity:cafe"}  # thin pool: broad same-kind search
+                              "exclude": [{"providerId": "geoapify:p2"}]}, geoapify(calls))
+    # A category lists every place of that kind; an invalid category falls back to a text search.
+    assert calls[0]["path"] == "/v2/places" and calls[0]["categories"] == "catering.cafe"
+    assert calls[1]["path"] == "/v1/geocode/search" and calls[1]["text"] == "roastery"
+    assert len(calls) == 4 and calls[2]["filter"] != calls[0]["filter"]  # thin pool: same searches, bigger area
     assert out["vibe"] == "independent, design-led specialty coffee"
     picks = out["suggestions"]
     assert picks[0]["name"] == "Koffee Mameya" and picks[0]["why"] == "Tiny independent roaster near your saved cafes."
@@ -91,7 +98,7 @@ def test_empty_plans_fall_back_to_a_plain_search(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setattr(discovery.claude, "_json_call", lambda *a: None)
     vibe, searches = discovery.plan_searches({"center": CENTER})
-    assert vibe == "things to see" and searches == [{"q": "attraction", "osm_tag": ""}]
+    assert vibe == "things to see" and searches == [{"q": "attraction", "category": ""}]
 
 
 def test_embed_needs_a_key_and_survives_voyage_errors(monkeypatch):

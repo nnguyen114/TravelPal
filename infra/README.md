@@ -41,7 +41,7 @@ terraform apply plan            # services start once images exist; until then E
 Then store the secrets (generated keys never touch disk or Terraform state):
 
 ```bash
-ANTHROPIC_API_KEY=... VOYAGE_API_KEY=... infra/scripts/put-secrets.sh
+ANTHROPIC_API_KEY=... VOYAGE_API_KEY=... PLACES_API_KEY=... infra/scripts/put-secrets.sh
 ```
 
 Build and push images (tags are immutable: use the git SHA), then deploy that tag:

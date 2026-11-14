@@ -8,7 +8,8 @@ setWorkerUrl(workerUrl)
 import { useEffect, useRef } from 'react'
 import type { Destination } from '../types'
 
-type MapDay = { color: string; stops: Destination[] }
+/** home: where the day happens (its city), used when none of its places has a map location yet. */
+type MapDay = { color: string; stops: Destination[]; home?: [number, number] }
 type Props = { days: MapDay[]; activeDay: number | null; selectedId: string | null; onSelect: (id: string) => void; center?: [number, number] }
 
 // ponytail: OpenFreeMap tiles are free and keyless; move to a paid tile provider (MapTiler etc.) if we need an SLA.
@@ -59,7 +60,9 @@ export function TripMap({ days, activeDay, selectedId, onSelect, center }: Props
       })
     })
     ;(m.getSource('routes') as GeoJSONSource).setData({ type: 'FeatureCollection', features })
+    const home = activeDay === null ? undefined : days[activeDay]?.home
     if (!bounds.isEmpty()) m.fitBounds(bounds, { padding: { top: 50, left: 50, right: 50, bottom: 100 }, maxZoom: 15, duration: 400 })
+    else if (home) m.flyTo({ center: home, zoom: 10, duration: 400 }) // nothing to frame: at least show the right place
   }
 
   useEffect(() => {
@@ -82,5 +85,16 @@ export function TripMap({ days, activeDay, selectedId, onSelect, center }: Props
 
   useEffect(draw, [days, activeDay, selectedId])
 
-  return <div ref={box} style={{ position: 'absolute', inset: 0 }} role="region" aria-label="Trip map" />
+  const shown = activeDay === null ? null : days[activeDay]
+  const unmapped = shown && shown.stops.length > 0 && !shown.stops.some((s) => s.lat != null && s.lng != null)
+  return (
+    <>
+      <div ref={box} style={{ position: 'absolute', inset: 0 }} role="region" aria-label="Trip map" />
+      {unmapped && (
+        <div className="map-empty" role="status">
+          Day {activeDay! + 1}'s places aren't on the map yet. Open one and search for it to place it.
+        </div>
+      )}
+    </>
+  )
 }
