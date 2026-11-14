@@ -4,7 +4,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import discovery
+from app import discovery, places
 from app.main import app
 
 CENTER = {"lat": 35.67, "lng": 139.70}
@@ -73,9 +73,21 @@ def test_claude_plans_voyage_ranks_with_diversity_and_claude_explains(monkeypatc
     assert all("_v" not in p for p in picks)
 
 
-def test_photon_errors_and_empty_plans_degrade_gracefully(monkeypatch):
-    client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(503)))
-    assert discovery.discover({"seeds": [{"name": "Onibus", "category": "cafe"}], "center": CENTER}, client)["suggestions"] == []
+def test_place_search_outage_is_reported_not_shown_as_no_results(monkeypatch):
+    down = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(429)))
+    with pytest.raises(places.Unavailable):
+        discovery.discover({"seeds": [{"name": "Onibus", "category": "cafe"}], "center": CENTER}, down)
+    monkeypatch.setattr(places, "CLIENT", down)
+    from app.security import require_internal
+    app.dependency_overrides[require_internal] = lambda: {"iss": "core-api"}
+    try:
+        r = TestClient(app).post("/internal/discover", json={"request": "coffee", "center": CENTER})
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 503 and r.json()["detail"] == "Place search is unavailable right now."
+
+
+def test_empty_plans_fall_back_to_a_plain_search(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setattr(discovery.claude, "_json_call", lambda *a: None)
     vibe, searches = discovery.plan_searches({"center": CENTER})

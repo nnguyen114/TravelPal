@@ -7,6 +7,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -52,6 +53,16 @@ public class AiServiceClient {
             throw unavailable(what);
         }
         return res.body();
+    }
+
+    /** POSTs JSON and returns the whole reply. Unreachable, non-200 or a broken read all become 503. */
+    public String call(String path, String json, UUID user, Duration timeout, String what) throws InterruptedException {
+        try (InputStream in = post(path, json, user, timeout, what)) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.warn("Reading the ai-service reply for {} failed", path, e);
+            throw unavailable(what);
+        }
     }
 
     private static ResponseStatusException unavailable(String what) {

@@ -7,6 +7,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Version;
 import java.time.LocalTime;
 import java.util.UUID;
+import java.time.Instant;
+import java.util.Objects;
 
 /** One record per place in a trip; scheduled = has a day. Never duplicated between collection and itinerary. */
 @Entity
@@ -33,7 +35,7 @@ public class Destination {
     private boolean dayTrip;
     private String hintsSource;
     @jakarta.persistence.Column(insertable = false, updatable = false)
-    private java.time.Instant createdAt;
+    private Instant createdAt;
     @Version
     private long version;
 
@@ -65,7 +67,7 @@ public class Destination {
 
     /** Returns true if anything changed. */
     boolean hints(LocalTime after, LocalTime before, boolean dayTrip) {
-        boolean changed = !java.util.Objects.equals(after, visitAfter) || !java.util.Objects.equals(before, visitBefore) || dayTrip != this.dayTrip;
+        boolean changed = !Objects.equals(after, visitAfter) || !Objects.equals(before, visitBefore) || dayTrip != this.dayTrip;
         if (changed) {
             this.visitAfter = after;
             this.visitBefore = before;

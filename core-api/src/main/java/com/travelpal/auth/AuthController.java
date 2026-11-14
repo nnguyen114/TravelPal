@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api")
@@ -63,7 +64,7 @@ public class AuthController {
     @PostMapping("/auth/refresh")
     SessionDto refresh(@CookieValue(name = COOKIE, required = false) String token, HttpServletResponse res) {
         if (token == null) {
-            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "No session");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No session");
         }
         return respond(auth.refresh(token), res);
     }

@@ -9,6 +9,10 @@ spring:
     open-in-view: false
     hibernate.ddl-auto: validate
   mvc.problemdetails.enabled: true
+  # Outbound HTTP (place search): fail fast rather than hold a request thread on a slow provider.
+  http.clients:
+    connect-timeout: 4s
+    read-timeout: 10s
   # Rate limits, AI quotas, ended sessions and live-update fan-out are shared through Redis (rediss:// in AWS).
   data.redis.url: ${REDIS_URL:redis://localhost:6379}
   # Omitted booleans (e.g. "locked") mean false; Jackson 3 rejects them by default.

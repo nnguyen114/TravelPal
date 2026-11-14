@@ -7,11 +7,7 @@ what "Optimize Day" would do. Claude only tags new places with sensible visiting
 import copy
 
 from app import claude
-from app.optimizer import Stop, fmt, hhmm, km, optimize
-
-
-def _point(d: dict) -> Stop:
-    return Stop(d["id"], d["name"], d.get("lat"), d.get("lng"), 0, None, None, None, False)
+from app.optimizer import fmt, hhmm, km, optimize, point
 
 
 def _apply(trip: dict, changes: list[dict]) -> tuple[dict, list[str]]:
@@ -43,7 +39,7 @@ def _best_day(job: dict, place: dict) -> int | None:
         pts = [d for d in job["destinations"] if d.get("dayIndex") == day and d.get("lat") is not None and d["id"] != place["id"]]
         if not pts or place.get("lat") is None:
             return 10_000.0
-        return min(km(_point(place), _point(p)) for p in pts)
+        return min(km(point((place.get("lat"), place.get("lng"))), point((p.get("lat"), p.get("lng")))) for p in pts)
 
     return min(days, key=dist, default=None)
 
