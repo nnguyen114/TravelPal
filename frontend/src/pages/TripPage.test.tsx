@@ -91,7 +91,7 @@ it('selects from the map and day chips', async () => {
 it('adds a manually typed destination to a day', async () => {
   const calls = api()
   renderAt('/trips/t1', routes)
-  await userEvent.click(within(await screen.findByRole('article', { name: 'Day 2' })).getByRole('button', { name: '+ Add' }))
+  await userEvent.click(within(await screen.findByRole('article', { name: 'Day 2' })).getByRole('button', { name: 'Add a place to Day 2' }))
   await userEvent.type(screen.getByLabelText('Place'), 'Tiny bar')
   await userEvent.click(screen.getByRole('button', { name: 'Add Directly' }))
   await waitFor(() => expect(calls.find((c) => c.method === 'POST' && c.url.endsWith('/destinations'))?.body).toMatchObject({ name: 'Tiny bar', dayIndex: 1, durationMin: 60 }))
@@ -154,4 +154,27 @@ it('shows the empty-trip prompt', async () => {
   mockApi({ 'GET /api/trips/t1': () => json(200, trip()), 'GET /api/trips/t1/destinations': () => json(200, []) })
   renderAt('/trips/t1', routes)
   expect(await screen.findByText('Start with the places you want to go')).toBeInTheDocument()
+})
+
+it('keeps long trips tidy: a day picker instead of chips, and slim rows for open days', async () => {
+  api({ endDate: '2027-07-05', dayCount: 26 })
+  renderAt('/trips/t1', routes)
+  const picker = await screen.findByRole('group', { name: 'Show day on map' })
+  expect(within(picker).queryByRole('button', { name: 'Day 7' })).not.toBeInTheDocument()
+  const select = within(picker).getByRole('combobox', { name: 'Day shown on map' })
+  expect(within(select).getAllByRole('option')).toHaveLength(27)
+  expect(select).toHaveValue('0')
+  expect(within(picker).getByRole('button', { name: 'Previous day' })).toBeDisabled()
+
+  await userEvent.click(within(picker).getByRole('button', { name: 'Next day' }))
+  expect(select).toHaveValue('1')
+  await userEvent.selectOptions(select, '25')
+  expect(within(picker).getByRole('button', { name: 'Next day' })).toBeDisabled()
+  await userEvent.click(within(picker).getByRole('button', { name: 'All days' }))
+  expect(select).toHaveValue('all')
+
+  // Day 2 has nothing planned: one slim row with its own add button.
+  const day2 = screen.getByRole('article', { name: 'Day 2' })
+  expect(day2).toHaveClass('day-empty')
+  expect(within(day2).getByText('Nothing planned yet.')).toBeInTheDocument()
 })

@@ -33,15 +33,19 @@ public class AiServiceClient {
     public InputStream post(String path, String json, UUID user, Duration timeout, String what) throws InterruptedException {
         HttpResponse<InputStream> res;
         try {
-            res = http.send(HttpRequest.newBuilder(URI.create(props.serviceUrl() + path))
+            // Tolerate a trailing slash in AI_SERVICE_URL ("https://ai.example.com/" + "/internal/...").
+            String base = props.serviceUrl().replaceAll("/+$", "");
+            res = http.send(HttpRequest.newBuilder(URI.create(base + path))
                 .header("Authorization", "Bearer " + tokens.issue(user)).header("Content-Type", "application/json")
                 .timeout(timeout).POST(HttpRequest.BodyPublishers.ofString(json)).build(), HttpResponse.BodyHandlers.ofInputStream());
         } catch (IOException e) {
-            log.warn("ai-service unreachable", e);
+            log.warn("ai-service unreachable at {}: check AI_SERVICE_URL", props.serviceUrl(), e);
             throw unavailable(what);
         }
         if (res.statusCode() != 200) {
-            log.warn("ai-service answered {} for {}", res.statusCode(), path);
+            log.warn("ai-service answered {} for {}{}", res.statusCode(), path, res.statusCode() == 401
+                ? ": it rejected our service token. INTERNAL_JWT_PUBLIC_KEY on the AI service must be the public half of"
+                    + " INTERNAL_JWT_PRIVATE_JWK here (generate both together with deploy/render/make-keys.sh)" : "");
             try (InputStream ignored = res.body()) { // release the connection
             } catch (IOException ignored) { // nothing to recover
             }
