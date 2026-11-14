@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app import chat, discovery, impact, links, worker
+from app import chat, discovery, impact, links, security, worker
 from app.security import require_internal
 
 # Local dev: keys live in the repo-root .env (gitignored). Real env vars win.
@@ -18,6 +18,7 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    security.check_configured_key()
     stop = threading.Event()
     if os.environ.get("WORKER_ENABLED", "true") == "true":
         worker.start(stop)
@@ -25,7 +26,7 @@ async def lifespan(_: FastAPI):
     stop.set()
 
 
-app = FastAPI(title="TravelPal AI service", docs_url=None, redoc_url=None, lifespan=lifespan)
+app = FastAPI(title="TravelPal AI service", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
 
 @app.get("/health")
