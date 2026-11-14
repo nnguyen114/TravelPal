@@ -19,7 +19,7 @@ dev = [
     "pytest-cov>=7.0",
     "httpx>=0.28",
     "ruff>=0.14",
-    "moto[sqs]>=5.1",
+    "moto[sqs]>=5.2.5",
 ]
 
 [tool.pytest.ini_options]
