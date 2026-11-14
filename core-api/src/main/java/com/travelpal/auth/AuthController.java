@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -74,6 +75,13 @@ public class AuthController {
             auth.logout(token);
         }
         res.addHeader(HttpHeaders.SET_COOKIE, cookie("", 0).toString());
+    }
+
+    /** Hands the web app its CSRF cookie (XSRF-TOKEN) so it can refresh or end a session. */
+    @GetMapping("/auth/csrf")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void csrf(CsrfToken token) {
+        token.getToken(); // reading the token is what writes the cookie
     }
 
     @GetMapping("/me")

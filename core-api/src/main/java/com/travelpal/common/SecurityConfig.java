@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -30,6 +31,7 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.util.matcher.RequestHeaderRequestMatcher;
 
 @Configuration
 public class SecurityConfig {
@@ -43,14 +45,19 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain api(HttpSecurity http) throws Exception {
         http
-            // Stateless bearer-token API. The only cookie (refresh) is HttpOnly + SameSite=Strict + Path=/api/auth.
-            .csrf(c -> {})
+            // CSRF tokens where a browser could be tricked into acting on a cookie alone: refreshing and ending a
+            // session (the refresh cookie is also HttpOnly + SameSite=Strict + Path=/api/auth). Bearer-token calls
+            // can't be forged from another site, and login/register only accept JSON, which a cross-site form can't
+            // send without a CORS preflight (refused). The web app echoes the XSRF-TOKEN cookie in X-XSRF-TOKEN.
+            .csrf(c -> c.spa()
+                .ignoringRequestMatchers(new RequestHeaderRequestMatcher(HttpHeaders.AUTHORIZATION))
+                .ignoringRequestMatchers("/api/auth/login", "/api/auth/register"))
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             // The same policy the CloudFront deployment sends, so the web app also works when served from here (Render).
             .headers(h -> h.contentSecurityPolicy(c -> c.policyDirectives(CSP)))
             .authorizeHttpRequests(a -> a
                 .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
-                .requestMatchers("/actuator/health", "/error", "/.well-known/internal-jwks.json").permitAll()
+                .requestMatchers("/actuator/health", "/error", "/.well-known/internal-jwks.json", "/api/auth/csrf").permitAll()
                 .requestMatchers("/api/**", "/actuator/**").authenticated()
                 // Everything else is the web app's static files and its client-side routes; all data sits under /api.
                 .anyRequest().permitAll())
