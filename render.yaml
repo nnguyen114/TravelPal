@@ -1,0 +1,64 @@
+# Render Blueprint for a test deployment: New > Blueprint in the Render dashboard, pick this repo.
+# Free plans everywhere (free services sleep after 15 minutes idle; the first request after that takes ~1 minute).
+# Values marked sync: false are asked for once when the Blueprint is created: see deploy/render/README.md.
+services:
+  # Web app + core-api in one service, so the app and the API share one address.
+  - type: web
+    name: travelpal
+    runtime: docker
+    dockerfilePath: ./deploy/render/app.Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: travelpal-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: travelpal-redis, property: connectionString }
+      - key: OPTIMIZE_QUEUE
+        value: http # no SQS on Render: optimize jobs go straight to the AI service
+      - key: AI_SERVICE_URL
+        sync: false # the AI service's public URL, e.g. https://travelpal-ai.onrender.com
+      - key: DEV_KEYS
+        value: "false" # refuse to start without real signing keys
+      - key: JWT_PRIVATE_KEY
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
+      - key: INTERNAL_JWT_PRIVATE_JWK
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+
+  # Claude/Voyage features. Public (free services can't receive private traffic), but every /internal call needs a
+  # short-lived token signed by the app's internal key.
+  - type: web
+    name: travelpal-ai
+    runtime: docker
+    dockerfilePath: ./ai-service/Dockerfile
+    dockerContext: ./ai-service
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: WORKER_ENABLED
+        value: "false" # no queue to poll; jobs arrive over HTTP
+      - key: INTERNAL_JWT_PUBLIC_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: VOYAGE_API_KEY
+        sync: false
+
+  # Rate limits, AI quotas, signed-out sessions, live updates.
+  - type: keyvalue
+    name: travelpal-redis
+    plan: free
+    maxmemoryPolicy: noeviction # ended sessions must never be evicted early
+    ipAllowList: [] # private network only
+
+databases:
+  - name: travelpal-db
+    plan: free
+    databaseName: travelpal
+    user: travelpal
+    postgresMajorVersion: "17"

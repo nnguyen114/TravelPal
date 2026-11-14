@@ -34,6 +34,11 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 public class SecurityConfig {
     public static final String ISSUER = "travelpal";
+    static final String CSP = String.join("; ",
+        "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src https://fonts.gstatic.com", "img-src 'self' data: blob: https://tiles.openfreemap.org",
+        "connect-src 'self' https://tiles.openfreemap.org", "worker-src 'self' blob:", "object-src 'none'",
+        "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'");
 
     @Bean
     SecurityFilterChain api(HttpSecurity http) throws Exception {
@@ -41,11 +46,14 @@ public class SecurityConfig {
             // Stateless bearer-token API. The only cookie (refresh) is HttpOnly + SameSite=Strict + Path=/api/auth.
             .csrf(c -> c.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .headers(h -> h.contentSecurityPolicy(c -> c.policyDirectives("default-src 'none'; frame-ancestors 'none'")))
+            // The same policy the CloudFront deployment sends, so the web app also works when served from here (Render).
+            .headers(h -> h.contentSecurityPolicy(c -> c.policyDirectives(CSP)))
             .authorizeHttpRequests(a -> a
                 .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
                 .requestMatchers("/actuator/health", "/error", "/.well-known/internal-jwks.json").permitAll()
-                .anyRequest().authenticated())
+                .requestMatchers("/api/**", "/actuator/**").authenticated()
+                // Everything else is the web app's static files and its client-side routes; all data sits under /api.
+                .anyRequest().permitAll())
             .oauth2ResourceServer(o -> o.jwt(j -> {}));
         return http.build();
     }

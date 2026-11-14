@@ -33,13 +33,15 @@ export function Departures() {
   const [still] = useState(reduced)
   const box = useRef<HTMLElement>(null)
   const input = useRef<HTMLInputElement>(null)
+  // Hold the board still while someone is pointing at it or using it, so a row can't roll away mid-click.
+  const held = useRef(false)
 
   useEffect(() => {
     if (still || typeof IntersectionObserver === 'undefined' || !box.current) return
     let timer: number | undefined
     const io = new IntersectionObserver(([e]) => {
       window.clearInterval(timer)
-      if (e.isIntersecting) timer = window.setInterval(() => setOffset((o) => o + 1), 4000)
+      if (e.isIntersecting) timer = window.setInterval(() => { if (!held.current) setOffset((o) => o + 1) }, 4000)
     })
     io.observe(box.current)
     return () => {
@@ -53,7 +55,9 @@ export function Departures() {
   const rows = Array.from({ length: ROWS }, (_, r) => flight(offset + r))
 
   return (
-    <section className="board-wrap" ref={box} aria-labelledby="board-q">
+    <section className="board-wrap" ref={box} aria-labelledby="board-q"
+      onPointerEnter={() => (held.current = true)} onPointerLeave={() => (held.current = false)}
+      onFocus={() => (held.current = true)} onBlur={() => (held.current = false)}>
       <div className="board">
         <div className="board-top">
           <span className="board-title"><Plane /> Departures</span>

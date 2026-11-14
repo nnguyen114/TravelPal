@@ -45,6 +45,14 @@ def assistant(req: chat.ChatRequest, _: Annotated[dict, Depends(require_internal
     return StreamingResponse(chat.chat_events(req), media_type="text/event-stream")
 
 
+@app.post("/internal/optimize")
+def optimize_now(job: dict, _: Annotated[dict, Depends(require_internal)]) -> dict:
+    """The same job the SQS worker handles, answered directly (used where there is no queue)."""
+    if not isinstance(job.get("previewId"), str) or not isinstance(job.get("destinations"), list):
+        raise HTTPException(422, "Not an optimize job")
+    return worker.run(job)
+
+
 class ImpactRequest(BaseModel):
     trip: dict
     changes: list[dict] = Field(min_length=1, max_length=20)
