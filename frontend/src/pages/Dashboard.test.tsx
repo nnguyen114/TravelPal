@@ -89,3 +89,17 @@ it('deletes the account only with the password and signs out', async () => {
   await userEvent.click(within(dialog).getByRole('button', { name: 'Delete my account' }))
   await waitFor(() => expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(2))
 })
+
+it('opens Create Trip already filled in when a city was picked on the landing page', async () => {
+  const calls = mockApi({
+    'GET /api/trips': () => json(200, []),
+    'GET /api/places/search': () => json(200, [{ name: 'Lisbon', address: 'Portugal', lat: 38.72, lng: -9.14, providerId: 'osm:R1' }]),
+  })
+  renderAt('/?to=Lisbon', routes)
+  const dialog = await screen.findByRole('dialog', { name: 'Create a trip' })
+  expect(within(dialog).getByLabelText('Trip name')).toHaveValue('Lisbon trip')
+  expect(within(dialog).getByLabelText('Destination')).toHaveValue('Lisbon')
+  // It looks the place up straight away, so the visitor just picks it.
+  expect(await within(dialog).findByRole('button', { name: /Lisbon/ })).toBeInTheDocument()
+  expect(calls.some((c) => c.url.startsWith('/api/places/search?q=Lisbon'))).toBe(true)
+})

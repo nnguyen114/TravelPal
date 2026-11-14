@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { expect, it } from 'vitest'
@@ -61,14 +61,24 @@ it('steps through every demo chapter', async () => {
   expect(screen.getByRole('button', { name: 'Play demo' })).toBeInTheDocument()
 })
 
-it('shows a departures board with destinations, times and statuses', () => {
+it('turns the departures board into the first step of planning', async () => {
   renderLanding()
-  const board = screen.getByRole('region', { name: /Departures board/ })
-  expect(board).toHaveAccessibleName(expect.stringContaining('Buenos Aires'))
-  const rows = board.querySelectorAll('.board-row:not(.board-head)')
-  expect(rows).toHaveLength(5)
-  expect(rows[0].textContent).toContain('09:40')
-  expect(rows[0].textContent).toContain('TOKYO')
-  expect(rows[0].textContent).toContain('Boarding')
-  expect(rows[1].textContent).toContain('09:55')
+  const board = screen.getByRole('region', { name: 'Where are you headed?' })
+  const go = () => within(board).getAllByRole('link').find((a) => a.classList.contains('board-go'))!
+  expect(go()).toHaveAttribute('href', '/signup')
+  expect(within(board).getByLabelText('No destination yet')).toBeInTheDocument()
+
+  // Typing a city flips it onto the top row and carries it into sign-up.
+  await userEvent.type(within(board).getByRole('textbox'), 'Kyoto')
+  // The letters spin for a moment before landing.
+  await waitFor(() => expect(within(board).getByLabelText('Your trip: Kyoto')).toHaveTextContent('KYOTO'))
+  expect(go()).toHaveAttribute('href', '/signup?to=Kyoto')
+
+  // Picking a departing flight does the same.
+  const flights = within(board).getAllByRole('button', { name: /^Pick / })
+  expect(flights).toHaveLength(4)
+  await userEvent.click(within(board).getByRole('button', { name: 'Pick Tokyo' }))
+  expect(within(board).getByRole('textbox')).toHaveValue('Tokyo')
+  expect(go()).toHaveAttribute('href', '/signup?to=Tokyo')
+  expect(flights[0]).toHaveTextContent('10:05')
 })

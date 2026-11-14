@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
-import { Link } from 'react-router'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { CreateTripDialog, Modal } from '../dialogs'
@@ -95,7 +95,14 @@ function TripCard({ trip, i }: { trip: TripSummary; i: number }) {
 
 export function Dashboard() {
   const { user } = useAuth()
-  const [creating, setCreating] = useState(false)
+  const navigate = useNavigate()
+  // A city picked on the landing page arrives as ?to=City (through sign-up): open Create Trip with it filled in.
+  const [params] = useSearchParams()
+  const [destination] = useState(() => params.get('to')?.trim().slice(0, 120) ?? '')
+  const [creating, setCreating] = useState(!!destination)
+  useEffect(() => {
+    if (params.has('to')) navigate('/', { replace: true })
+  }, [params, navigate])
   const trips = useQuery({ queryKey: ['trips'], queryFn: () => api<TripSummary[]>('/api/trips') })
 
   return (
@@ -124,7 +131,7 @@ export function Dashboard() {
           </button>
         </div>
       </main>
-      {creating && <CreateTripDialog onClose={() => setCreating(false)} />}
+      {creating && <CreateTripDialog destination={destination} onClose={() => setCreating(false)} />}
     </>
   )
 }
