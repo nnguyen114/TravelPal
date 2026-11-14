@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { api } from '../api'
+import { Empty } from '../art'
 import { useAuth } from '../auth'
 import { Modal, PlaceSearch } from '../dialogs'
 import { PlusIcon } from '../icons'
@@ -231,7 +232,11 @@ export function SuggestionsTab({ trip, destinations, proposals }: { trip: Trip; 
             </button>
           ))}
         </div>
-        {shown.length === 0 && <p className="muted" style={{ fontSize: 14 }}>No {filter.toLowerCase()} proposals.</p>}
+        {shown.length === 0 && (
+          <Empty title={`No ${filter.toLowerCase()} proposals.`}>
+            {filter === 'OPEN' ? 'When someone suggests a change to the plan, it shows up here for everyone to weigh in.' : 'Nothing here yet.'}
+          </Empty>
+        )}
         {shown.map((p) => (
           <button key={p.id} className="card" aria-current={p.id === selectedId ? 'true' : undefined}
             onClick={() => navigate(`/trips/${trip.id}/suggestions/${p.id}`)}

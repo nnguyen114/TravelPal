@@ -28,7 +28,7 @@ it('shows the landing page to visitors, logs in, then logs out', async () => {
   await userEvent.type(screen.getByLabelText('Password'), 'secret-pass')
   await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
   expect(await screen.findByRole('heading', { name: 'My Trips' })).toBeInTheDocument()
-  expect(screen.getByText('Hi Win, where to next?')).toBeInTheDocument()
+  expect(screen.getByText(/^(Good (morning|afternoon|evening)|Up late), Win/)).toBeInTheDocument()
 
   await userEvent.click(screen.getByRole('button', { name: 'Log out' }))
   expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument()
@@ -41,7 +41,7 @@ it('registers and shows server errors', async () => {
   }))
   window.history.pushState({}, '', '/signup')
   render(<App />)
-  expect(await screen.findByRole('heading', { name: 'Create your account' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: "Let's plan something" })).toBeInTheDocument()
   await userEvent.type(screen.getByLabelText('Your name'), 'Win')
   await userEvent.type(screen.getByLabelText('Email'), 'win@example.com')
   await userEvent.type(screen.getByLabelText('Password'), 'long-enough-pw')

@@ -76,3 +76,19 @@ export function toInput(d: Destination, patch: Partial<DestinationInput> = {}): 
 }
 
 export const canEdit = (trip: Trip) => trip.role !== 'VIEWER'
+
+/** "In 3 weeks", "Tomorrow", "Day 2 of 4"... how far away a trip is, from the traveler's point of view. */
+export function countdown(start: string, end: string, today: Date): string {
+  const day = 86_400_000
+  const now = parse(iso(today)).getTime()
+  const toStart = Math.round((parse(start).getTime() - now) / day)
+  const length = Math.round((parse(end).getTime() - parse(start).getTime()) / day) + 1
+  if (toStart > 1) {
+    if (toStart < 14) return `In ${toStart} days`
+    if (toStart < 60) return `In ${Math.round(toStart / 7)} weeks`
+    return `In ${Math.round(toStart / 30)} months`
+  }
+  if (toStart === 1) return 'Tomorrow'
+  if (-toStart < length) return `Day ${1 - toStart} of ${length}`
+  return 'Done. Hope it was great'
+}
