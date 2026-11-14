@@ -86,25 +86,20 @@ export function Landing() {
           <Wave flip />
         </section>
 
-        <section className="lp-section lp-compare-section" aria-labelledby="compare-title">
-          <div className="lp-head" data-reveal>
-            <span className="lp-tagline">Why TravelPal</span>
-            <h2 id="compare-title">What other planners leave to you</h2>
+        <section className="lp-section lp-perks-section">
+          <Head tag="Why it's faster" title="Where group trips usually get stuck, handled" />
+          <div className="lp-extras">
+            {PERKS.map((x, i) => (
+              <div key={x.title} className="lp-extra" data-reveal style={delay(i * 0.05)}>
+                <span className="lp-icon" style={{ background: x.bg, color: x.fg }} aria-hidden="true">{x.icon}</span>
+                <div>
+                  <span className="lp-kind" style={{ color: x.fg }}>{x.kind}</span>
+                  <h3>{x.title}</h3>
+                  <p>{x.body}</p>
+                </div>
+              </div>
+            ))}
           </div>
-          <table className="lp-compare" aria-labelledby="compare-title" data-reveal>
-            <thead>
-              <tr><th scope="col"><span className="sr-only">Situation</span></th><th scope="col">Most trip planners</th><th scope="col" className="us">TravelPal</th></tr>
-            </thead>
-            <tbody>
-              {COMPARE.map(([topic, them, us], i) => (
-                <tr key={topic} style={{ '--c': DAY_COLORS[i % DAY_COLORS.length] } as CSSProperties}>
-                  <th scope="row">{topic}</th>
-                  <td className="them"><span className="mark no" aria-hidden="true">–</span>{them}</td>
-                  <td className="us"><span className="mark yes" aria-hidden="true">✓</span>{us}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </section>
 
         <section id="features" className="lp-section lp-stories">
@@ -325,14 +320,40 @@ const USES = [
   },
 ]
 
-// Only differences that hold against the popular planners we checked (live editing, maps, budgets and route
-// ordering are common, so they aren't here).
-const COMPARE: [string, string, string][] = [
-  ['Time of day', 'Puts stops in the shortest order.', 'Puts each place at its hour: markets early, bars after dark.'],
-  ['Day trips', 'Leaves the mountain town wedged between two museums.', 'Spots far-off places and gives them a day of their own.'],
-  ['Group changes', 'Anyone with access edits the plan directly.', "Friends suggest a change, talk it over, see whether it fits, then merge."],
-  ['Saved videos', 'You hunt down the place name yourself.', 'Paste the TikTok or Instagram link and the place is found for you.'],
-  ['Recommendations', "Shows what's popular nearby.", 'Finds more like the places you picked, with a reason for each.'],
+const ico = (d: ReactNode) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+
+// Each one removes a step where group planning usually stalls.
+const PERKS = [
+  {
+    kind: 'Together', title: 'Everyone plans at once', bg: '#E2F3F0', fg: '#0A5F59',
+    body: 'Share one link. Friends add places from their own phones and see each other\'s changes as they happen.',
+    icon: ico(<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5" /></>),
+  },
+  {
+    kind: 'Together', title: 'Suggest, then merge', bg: '#E3F0FB', fg: '#2C64A0',
+    body: 'Instead of rewriting the plan, friends can suggest a change. The group talks it over and AI checks it fits before it goes in.',
+    icon: ico(<><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /><path d="M9 11.5l2 2 4-4" /></>),
+  },
+  {
+    kind: 'Auto-planned', title: 'Days sorted in one tap', bg: '#ECEAFD', fg: '#5B4BD0',
+    body: 'Places are grouped by neighborhood and put in a sensible order, so nobody spends an evening dragging pins around.',
+    icon: ico(<><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="6" r="2.5" /><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5" /></>),
+  },
+  {
+    kind: 'Auto-planned', title: 'The right hour for each place', bg: '#FFF1CC', fg: '#7A4F00',
+    body: 'Markets in the morning, bar streets after dark, and the far-off mountain town on a day of its own.',
+    icon: ico(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>),
+  },
+  {
+    kind: 'Tailored by AI', title: 'Picks that match your taste', bg: '#FCE3EC', fg: '#A63266',
+    body: 'Ask for more places like the ones you love. Suggestions learn from what you add and skip, and each one says why it fits.',
+    icon: ico(<><path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z" /><path d="M19 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></>),
+  },
+  {
+    kind: 'Tailored by AI', title: 'Answers instead of research', bg: '#FDEBE4', fg: '#B5472A',
+    body: 'Ask “can we fit teamLab on Day 2?” and get a straight answer from your actual plan, with the change ready to apply.',
+    icon: ico(<><path d="M4 5h16v11H8l-4 4z" /><path d="M9 10h6" /></>),
+  },
 ]
 
 const FAQ: [string, string][] = [

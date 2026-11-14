@@ -83,11 +83,10 @@ it('turns the departures board into the first step of planning', async () => {
   expect(flights[0]).toHaveTextContent('10:05')
 })
 
-it('compares TravelPal with other planners row by row', () => {
+it('lists the features that save the group time', () => {
   renderLanding()
-  const table = screen.getByRole('table', { name: 'What other planners leave to you' })
-  const rows = within(table).getAllByRole('row').slice(1)
-  expect(rows.map((r) => within(r).getByRole('rowheader').textContent))
-    .toEqual(['Time of day', 'Day trips', 'Group changes', 'Saved videos', 'Recommendations'])
-  expect(rows[0]).toHaveTextContent('bars after dark')
+  for (const title of ['Everyone plans at once', 'Suggest, then merge', 'Days sorted in one tap', 'The right hour for each place',
+    'Picks that match your taste', 'Answers instead of research']) {
+    expect(screen.getByRole('heading', { name: title })).toBeInTheDocument()
+  }
 })

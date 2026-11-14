@@ -190,22 +190,16 @@
 .lp-use h3 { font-size: 22px; font-weight: 800; margin: 6px 12px 0; }
 .lp-use p { margin: 8px 12px 0; color: var(--ink-2); line-height: 1.55; }
 
-/* Comparison: other planners vs TravelPal */
-.lp-compare-section { padding-top: 64px; }
-.lp-compare { width: 100%; max-width: 980px; margin: 0 auto; border-collapse: separate; border-spacing: 0 10px; }
-.lp-compare thead th { font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 0 22px 4px; }
-.lp-compare thead th.us { color: var(--accent-ink); }
-.lp-compare tbody th, .lp-compare td { background: #fff; padding: 18px 22px; vertical-align: middle; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
-  transition: background .25s, transform .35s var(--spring); }
-.lp-compare tbody th { width: 20%; text-align: left; font-size: 16px; font-weight: 800; border-left: 1px solid var(--line); border-radius: 18px 0 0 18px; position: relative; padding-left: 30px; }
-.lp-compare tbody th::before { content: ''; position: absolute; left: 14px; top: 22%; bottom: 22%; width: 5px; border-radius: 4px; background: var(--c); }
-.lp-compare td.them { width: 36%; color: var(--muted); font-size: 15px; }
-.lp-compare td.us { color: var(--ink); font-size: 15px; font-weight: 700; background: color-mix(in srgb, var(--c) 9%, #fff); border-right: 1px solid var(--line); border-radius: 0 18px 18px 0; }
-.lp-compare tbody tr:hover td.us { background: color-mix(in srgb, var(--c) 16%, #fff); }
-.lp-compare .mark { display: inline-flex; width: 24px; height: 24px; margin-right: 10px; border-radius: 50%; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; vertical-align: -6px; }
-.lp-compare .mark.no { background: var(--soft); color: var(--muted); }
-.lp-compare .mark.yes { background: var(--c); color: #fff; transition: transform .35s var(--spring); }
-.lp-compare tbody tr:hover .mark.yes { transform: scale(1.18) rotate(-8deg); }
+/* Features that remove planning bottlenecks */
+.lp-perks-section { padding-top: 64px; }
+.lp-extras { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.lp-extra { display: flex; gap: 16px; align-items: flex-start; padding: 22px; border-radius: 22px; background: #fff; border: 1px solid var(--line); transition: transform .4s var(--spring), box-shadow .4s var(--ease), opacity .8s var(--ease) var(--d, 0s); }
+.lp-extra:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
+.lp-icon { width: 48px; height: 48px; flex: none; border-radius: 14px; display: flex; align-items: center; justify-content: center; transition: transform .4s var(--spring); }
+.lp-extra:hover .lp-icon { transform: rotate(-8deg) scale(1.08); }
+.lp-kind { display: block; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; }
+.lp-extra h3 { font-size: 17px; font-weight: 800; }
+.lp-extra p { margin: 6px 0 0; color: var(--ink-2); line-height: 1.5; font-size: 15px; }
 
 /* FAQ */
 .lp-faq-list { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
@@ -309,7 +303,7 @@ details[open] .lp-plus { transform: rotate(45deg); background: #FFE0D4; }
   .lp-hero-art { max-width: 640px; width: 100%; margin: 0 auto; }
   .lp-story, .lp-story.flip { grid-template-columns: 1fr; gap: 28px; }
   .lp-story.flip .lp-story-copy { order: 0; }
-  .lp-uses { grid-template-columns: 1fr 1fr; }
+  .lp-uses, .lp-extras { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 860px) {
   .board-row { grid-template-columns: calc(var(--c) * 5) calc(var(--c) * 12) 1fr; }
@@ -342,17 +336,7 @@ details[open] .lp-plus { transform: rotate(45deg); background: #FFE0D4; }
   .lp-story-art { padding: 22px; min-height: 0; border-radius: 24px; }
   .art-collect { grid-template-columns: 1fr; }
   .flow { transform: rotate(90deg); justify-self: center; animation: none; }
-  .lp-uses { grid-template-columns: 1fr; }
-  .lp-compare thead { display: none; }
-  .lp-compare, .lp-compare tbody, .lp-compare tr, .lp-compare th, .lp-compare td { display: block; width: auto !important; }
-  .lp-compare tr { margin-bottom: 12px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: #fff; }
-  .lp-compare tbody th, .lp-compare td { border: 0; border-radius: 0 !important; padding: 12px 16px; }
-  .lp-compare tbody th { padding-left: 26px; padding-bottom: 4px; }
-  .lp-compare tbody th::before { left: 12px; top: 14px; bottom: auto; height: 18px; }
-  .lp-compare td.them { padding-top: 4px; font-size: 14px; }
-  .lp-compare td.them::before { content: 'Most planners: '; font-weight: 700; }
-  .lp-compare td.us::before { content: 'TravelPal: '; color: var(--accent-ink); }
-  .lp-compare .mark { display: none; }
+  .lp-uses, .lp-extras { grid-template-columns: 1fr; }
   .lp-final { margin: 16px 16px 56px; border-radius: 26px; }
   .lp-footer { grid-template-columns: 1fr; padding-left: 16px; padding-right: 16px; }
   .lp-footer nav { justify-content: flex-start; }
