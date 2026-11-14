@@ -12,6 +12,7 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -19,7 +20,10 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
@@ -52,8 +56,11 @@ public class SecurityConfig {
     }
 
     @Bean
-    ECKey signingKey(JwtProperties props) throws Exception {
+    ECKey signingKey(JwtProperties props, @Value("${travelpal.dev-keys}") boolean devKeys) throws Exception {
         if (props.privateKey() == null || props.privateKey().isBlank()) {
+            if (!devKeys) {
+                throw new IllegalStateException("JWT_PRIVATE_KEY and JWT_PUBLIC_KEY must be set (DEV_KEYS=false)");
+            }
             LoggerFactory.getLogger(SecurityConfig.class).warn("JWT_PRIVATE_KEY not set: using an ephemeral dev key");
             return new ECKeyGenerator(Curve.P_256).keyID("dev").generate();
         }
@@ -69,10 +76,10 @@ public class SecurityConfig {
     }
 
     @Bean
-    JwtDecoder jwtDecoder(ECKey key) {
+    JwtDecoder jwtDecoder(ECKey key, OAuth2TokenValidator<Jwt> sessions) {
         NimbusJwtDecoder d = NimbusJwtDecoder.withJwkSource(new ImmutableJWKSet<>(new JWKSet(key.toPublicJWK())))
             .jwsAlgorithm(SignatureAlgorithm.ES256).build();
-        d.setJwtValidator(JwtValidators.createDefaultWithIssuer(ISSUER));
+        d.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefaultWithIssuer(ISSUER), sessions));
         return d;
     }
 

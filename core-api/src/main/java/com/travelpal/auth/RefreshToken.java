@@ -25,9 +25,8 @@ public class RefreshToken {
         this.expiresAt = expiresAt;
     }
 
+    UUID getId() { return id; }
     UUID getUserId() { return userId; }
     UUID getFamilyId() { return familyId; }
     Instant getExpiresAt() { return expiresAt; }
-    boolean isRevoked() { return revoked; }
-    void revoke() { revoked = true; }
 }

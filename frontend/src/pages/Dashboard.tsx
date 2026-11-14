@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { api } from '../api'
 import { useAuth } from '../auth'
-import { CreateTripDialog } from '../dialogs'
+import { CreateTripDialog, Modal } from '../dialogs'
 import { Logo, PlusIcon } from '../icons'
 import { formatRange } from '../trip'
 import type { TripSummary } from '../types'
@@ -14,15 +14,51 @@ const COVERS = [
   { bg: '#ECEAFD', sun: '#FFD66B', hill: '#BDB4F7', front: '#8F82F0' },
 ]
 
+function AccountDialog({ onClose }: { onClose: () => void }) {
+  const { user, deleteAccount } = useAuth()
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <Modal title="Your account" onClose={onClose}>
+      <p className="muted">{user?.displayName} · {user?.email}</p>
+      <form
+        style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}
+        onSubmit={async (e) => {
+          e.preventDefault()
+          setError(null)
+          try {
+            await deleteAccount(password)
+          } catch (err) {
+            setError((err as Error).message)
+          }
+        }}
+      >
+        <h3 style={{ fontSize: 16, fontWeight: 800 }}>Delete account</h3>
+        <p className="muted">
+          This removes your account, your saved places and your "not interested" list. Trips you share go to another
+          member; trips only you are in are deleted. This can't be undone.
+        </p>
+        <label className="field">Password
+          <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        </label>
+        {error && <div role="alert" className="error">{error}</div>}
+        <button className="btn btn-danger" type="submit">Delete my account</button>
+      </form>
+    </Modal>
+  )
+}
+
 export function TopBar() {
   const { user, logout } = useAuth()
+  const [account, setAccount] = useState(false)
   return (
     <header className="topbar">
       <div className="topbar-inner">
         <Link to="/" className="brand"><Logo /> TravelPal</Link>
         <div className="row">
-          <span className="avatar" aria-hidden="true">{user?.displayName.slice(0, 1).toUpperCase()}</span>
+          <button className="avatar" aria-label="Your account" onClick={() => setAccount(true)}>{user?.displayName.slice(0, 1).toUpperCase()}</button>
           <button className="btn btn-ghost" onClick={logout}>Log out</button>
+          {account && <AccountDialog onClose={() => setAccount(false)} />}
         </div>
       </div>
     </header>

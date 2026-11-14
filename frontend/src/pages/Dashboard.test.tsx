@@ -70,3 +70,22 @@ it('shows create errors and load errors', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Close' }))
   expect(screen.queryByLabelText('Trip name')).not.toBeInTheDocument()
 })
+
+it('deletes the account only with the password and signs out', async () => {
+  const calls = mockApi({
+    'GET /api/trips': () => json(200, []),
+    'DELETE /api/me': (body) => ((body as { password: string }).password === 'right-password'
+      ? new Response(null, { status: 204 }) : json(403, { detail: 'Password is incorrect' })),
+  })
+  renderAt('/', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Your account' }))
+  const dialog = screen.getByRole('dialog', { name: 'Your account' })
+  await userEvent.type(within(dialog).getByLabelText('Password'), 'wrong')
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Delete my account' }))
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('Password is incorrect')
+
+  await userEvent.clear(within(dialog).getByLabelText('Password'))
+  await userEvent.type(within(dialog).getByLabelText('Password'), 'right-password')
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Delete my account' }))
+  await waitFor(() => expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(2))
+})

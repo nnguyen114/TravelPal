@@ -5,19 +5,35 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** Fixed-window limit on credential endpoints, per client IP. */
-// ponytail: per-instance memory; move counters to Redis when running more than one core-api task.
+/** Per-client-IP limit on credential endpoints (per-account limits live in AuthService). */
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
     static final int LIMIT_PER_MINUTE = 10;
-    private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
-    private volatile long window = currentWindow();
+    private final Counters counters;
+    private final String ipHeader;
+
+    /**
+     * {@code ipHeader}: header carrying the real client address, set by a trusted edge. In AWS it is CloudFront's
+     * CloudFront-Viewer-Address ("ip:port"); the ALB only accepts CloudFront, so clients can't forge it.
+     */
+    RateLimitFilter(Counters counters, @Value("${travelpal.client-ip-header:}") String ipHeader) {
+        this.counters = counters;
+        this.ipHeader = ipHeader;
+    }
+
+    String clientIp(HttpServletRequest req) {
+        String v = ipHeader.isBlank() ? null : req.getHeader(ipHeader);
+        if (v == null || v.isBlank()) {
+            return req.getRemoteAddr();
+        }
+        int port = v.lastIndexOf(':');
+        return port > 0 ? v.substring(0, port) : v;
+    }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest req) {
@@ -28,20 +44,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
-        long now = currentWindow();
-        if (now != window) {
-            window = now;
-            counts.clear();
-        }
-        if (counts.computeIfAbsent(req.getRemoteAddr(), k -> new AtomicInteger()).incrementAndGet() > LIMIT_PER_MINUTE) {
+        if (!counters.allow("ip:" + clientIp(req), LIMIT_PER_MINUTE, Duration.ofMinutes(1))) {
             res.setStatus(429);
             res.setHeader("Retry-After", "60");
             return;
         }
         chain.doFilter(req, res);
-    }
-
-    private static long currentWindow() {
-        return System.currentTimeMillis() / 60_000;
     }
 }

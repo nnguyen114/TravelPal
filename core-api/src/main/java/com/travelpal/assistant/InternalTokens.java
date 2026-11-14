@@ -29,8 +29,12 @@ public class InternalTokens {
     private final NimbusJwtEncoder encoder;
 
     /** INTERNAL_JWT_PRIVATE_KEY (JWK JSON) keeps one key across restarts and tasks; unset = throwaway dev key. */
-    InternalTokens(@org.springframework.beans.factory.annotation.Value("${travelpal.internal-jwk:}") String jwk)
+    InternalTokens(@org.springframework.beans.factory.annotation.Value("${travelpal.internal-jwk:}") String jwk,
+                   @org.springframework.beans.factory.annotation.Value("${travelpal.dev-keys}") boolean devKeys)
             throws JOSEException, java.text.ParseException {
+        if (jwk.isBlank() && !devKeys) {
+            throw new IllegalStateException("INTERNAL_JWT_PRIVATE_JWK must be set (DEV_KEYS=false)");
+        }
         this.key = jwk.isBlank() ? new ECKeyGenerator(Curve.P_256).keyID("internal-" + UUID.randomUUID()).generate() : ECKey.parse(jwk);
         this.encoder = new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(key)));
     }

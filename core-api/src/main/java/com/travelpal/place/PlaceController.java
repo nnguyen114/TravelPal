@@ -6,6 +6,13 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.validation.annotation.Validated;
+import com.travelpal.common.Auth;
+import com.travelpal.common.Counters;
+import java.time.Duration;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,13 +27,21 @@ public class PlaceController {
 
     private final RestClient http;
 
-    PlaceController(RestClient.Builder builder, @Value("${travelpal.places-url}") String baseUrl) {
+    static final int SEARCHES_PER_HOUR = 300;
+    private final Counters counters;
+
+    PlaceController(RestClient.Builder builder, @Value("${travelpal.places-url}") String baseUrl, Counters counters) {
+        this.counters = counters;
         this.http = builder.baseUrl(baseUrl).defaultHeader("User-Agent", "travelpal-core-api").build();
     }
 
     @GetMapping("/api/places/search")
-    List<Place> search(@RequestParam @NotBlank @Size(max = 200) String q,
+    List<Place> search(@AuthenticationPrincipal Jwt jwt, @RequestParam @NotBlank @Size(max = 200) String q,
                        @RequestParam(required = false) Double lat, @RequestParam(required = false) Double lng) {
+        // Shared free map service: cap each account so one script can't get us blocked.
+        if (!counters.allow("places:" + Auth.userId(jwt), SEARCHES_PER_HOUR, Duration.ofHours(1))) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Too many searches. Try again later.");
+        }
         Map<?, ?> body = http.get().uri(u -> {
             u.path("/api/").queryParam("q", q).queryParam("limit", 8).queryParam("lang", "en");
             if (lat != null && lng != null) {
