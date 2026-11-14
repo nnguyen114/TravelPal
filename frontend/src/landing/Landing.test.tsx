@@ -60,3 +60,15 @@ it('steps through every demo chapter', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Pause demo' }))
   expect(screen.getByRole('button', { name: 'Play demo' })).toBeInTheDocument()
 })
+
+it('shows a departures board with destinations, times and statuses', () => {
+  renderLanding()
+  const board = screen.getByRole('region', { name: /Departures board/ })
+  expect(board).toHaveAccessibleName(expect.stringContaining('Buenos Aires'))
+  const rows = board.querySelectorAll('.board-row:not(.board-head)')
+  expect(rows).toHaveLength(5)
+  expect(rows[0].textContent).toContain('09:40')
+  expect(rows[0].textContent).toContain('TOKYO')
+  expect(rows[0].textContent).toContain('Boarding')
+  expect(rows[1].textContent).toContain('09:55')
+})

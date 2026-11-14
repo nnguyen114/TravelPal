@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { Logo, SparkleIcon } from '../icons'
 import { DAY_COLORS } from '../trip'
 import { Demo } from './Demo'
+import { Departures } from './Departures'
 import { Scene } from './Scene'
 import './landing.css'
 
@@ -29,15 +30,11 @@ const delay = (s: number) => ({ '--d': `${s}s` }) as CSSProperties
 const Arrow = () => <span className="arrow" aria-hidden="true">→</span>
 
 const YEAR = new Date().getFullYear()
-const PLACES = ['Tokyo', 'Lisbon', 'Mexico City', 'Seoul', 'Reykjavík', 'Cape Town', 'Hanoi', 'Marrakech', 'Kyoto', 'Lima', 'Bali', 'New York', 'Istanbul', 'Buenos Aires']
 
 export function Landing() {
   useReveal()
   return (
     <div className="landing">
-      <div className="lp-announce">
-        <span className="lp-new">New</span> Paste a TikTok or Instagram link and TravelPal finds the place.
-      </div>
       <header className="lp-nav">
         <Link to="/" className="brand"><Logo /> TravelPal</Link>
         <nav aria-label="Main">
@@ -57,15 +54,11 @@ export function Landing() {
             <h1 data-reveal>
               Turn the group chat into a <span className="lp-mark">trip</span>.
             </h1>
-            <p data-reveal style={delay(0.1)}>
-              Everyone keeps sending places. Paste them all in and TravelPal sorts them into days that work: the market
-              in the morning, the bar street after dark, the mountain town on a day of its own.
-            </p>
+            <p data-reveal style={delay(0.1)}>Paste everyone's places. Get days that actually work.</p>
             <div className="lp-actions" data-reveal style={delay(0.2)}>
               <Link to="/signup" className="btn btn-primary lp-btn lp-big">Plan a trip <Arrow /></Link>
-              <a href="#demo" className="btn lp-btn lp-big lp-secondary"><span className="lp-play" aria-hidden="true">▶</span> Watch the 30-second demo</a>
+              <a href="#demo" className="btn lp-btn lp-big lp-secondary"><span className="lp-play" aria-hidden="true">▶</span> See how it works</a>
             </div>
-            <p className="lp-small" data-reveal style={delay(0.3)}>Works on your phone and laptop. Invite friends with one link.</p>
           </div>
           <div className="lp-hero-art" data-reveal style={delay(0.15)}>
             <Scene />
@@ -75,23 +68,10 @@ export function Landing() {
                 <div key={n} className="lp-day-row"><span className="n" style={{ background: DAY_COLORS[1] }}>{i + 1}</span>{n}<small>{t}</small></div>
               ))}
             </div>
-            <div className="lp-card lp-tag" aria-hidden="true"><SparkleIcon size={15} color="#7C6CF0" /> Nikko gets its own day</div>
-            <div className="lp-card lp-crew" aria-hidden="true">
-              <Faces />
-              <span>Mina added 3 places</span>
-            </div>
           </div>
         </section>
 
-        <div className="lp-marquee" aria-label="Plan trips anywhere">
-          <div className="lp-marquee-track">
-            {[...PLACES, ...PLACES].map((p, i) => (
-              <span key={i} className="lp-place" style={{ '--c': DAY_COLORS[i % DAY_COLORS.length] } as CSSProperties} aria-hidden={i >= PLACES.length}>
-                <span className="dot" /> {p}
-              </span>
-            ))}
-          </div>
-        </div>
+        <Departures />
 
         <section id="demo" className="lp-band lp-band-mint">
           <Wave />
@@ -209,14 +189,6 @@ function Story({ tag, color, tint, title, art, flip, children }:
       </div>
       <div className="lp-story-art" style={{ background: tint }} data-reveal>{art}</div>
     </article>
-  )
-}
-
-function Faces() {
-  return (
-    <span className="lp-faces">
-      {[['Y', '#FFD9A8'], ['M', '#C9E6FF'], ['K', '#D9F2D0'], ['A', '#F8D3E3']].map(([l, c]) => <i key={l} style={{ background: c }}>{l}</i>)}
-    </span>
   )
 }
 
