@@ -80,6 +80,9 @@ export function PlaceSearch({ label, bias, onPick, required = true, initial = ''
               </button>
             </li>
           ))}
+          <li className="muted" style={{ fontSize: 11, padding: '6px 12px', borderTop: '1px solid var(--line)' }}>
+            Search by Geoapify · © OpenStreetMap contributors
+          </li>
         </ul>
       )}
       {error && <div role="alert" className="error">{error} You can still add it as typed, without a map location.</div>}

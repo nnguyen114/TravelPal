@@ -2,9 +2,9 @@
 # Generates TravelPal's signing keys and stores them, plus the Claude and Voyage API keys, in Secrets Manager.
 # Run once after `terraform apply` (and again to rotate). Keys go straight from this process to AWS: nothing is
 # written to disk or printed. Needs: aws CLI signed in to the target account, uv (for Python + cryptography).
-#   ANTHROPIC_API_KEY=... VOYAGE_API_KEY=... infra/scripts/put-secrets.sh
+#   ANTHROPIC_API_KEY=... VOYAGE_API_KEY=... PLACES_API_KEY=... infra/scripts/put-secrets.sh
 set -euo pipefail
-: "${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY}" "${VOYAGE_API_KEY:?set VOYAGE_API_KEY}"
+: "${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY}" "${VOYAGE_API_KEY:?set VOYAGE_API_KEY}" "${PLACES_API_KEY:?set PLACES_API_KEY}"
 cd "$(dirname "$0")/../../ai-service"
 
 put() { aws secretsmanager put-secret-value --secret-id "travelpal/$1" --secret-string "$2" >/dev/null && echo "stored travelpal/$1"; }
@@ -30,4 +30,5 @@ for k in jwt-private-key jwt-public-key internal-jwk; do
 done
 put anthropic-api-key "$ANTHROPIC_API_KEY"
 put voyage-api-key "$VOYAGE_API_KEY"
+put places-api-key "$PLACES_API_KEY"
 echo "Done. Redeploy both services to pick the keys up (signs everyone out once if the user key changed)."

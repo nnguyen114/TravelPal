@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/trips/{tripId}")
 public class DiscoverController {
     public record DiscoverRequest(@Size(max = 500) String query, Integer dayIndex, UUID likeDestinationId) {}
-    public record NotInterested(@NotBlank @Size(max = 200) String providerId, @NotBlank @Size(max = 200) String name) {}
+    public record NotInterested(@NotBlank @Size(max = 300) String providerId, @NotBlank @Size(max = 200) String name) {}
     public record LinkRequest(@NotBlank @Size(max = 2000) @Pattern(regexp = "(?i)https?://.+") String url) {}
 
     private final DiscoverService discover;
