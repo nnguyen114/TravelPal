@@ -4,8 +4,8 @@ from app import links
 
 PAGE = """<html><head><title>Koffee Mameya Kakeru | Specialty coffee in Kiyosumi</title>
 <meta property="og:description" content="A tasting-course coffee bar in Tokyo &amp; more"></head></html>"""
-PHOTON = {"features": [{"geometry": {"coordinates": [139.79, 35.68]},
-                        "properties": {"name": "Koffee Mameya Kakeru", "osm_type": "N", "osm_id": 9, "district": "Kiyosumi", "city": "Tokyo"}}]}
+GEOCODED = {"results": [{"name": "Koffee Mameya Kakeru", "lat": 35.68, "lon": 139.79, "place_id": "p9",
+                         "address_line2": "Kiyosumi, Tokyo"}]}
 
 
 def client(routes):
@@ -36,16 +36,16 @@ def test_google_maps_links_need_no_fetch():
 
 def test_maps_search_links_search_the_query(monkeypatch):
     out = links.resolve("https://maps.google.com/?q=Koffee+Mameya", {"lat": 35.68, "lng": 139.76},
-                        client(lambda r: httpx.Response(200, json=PHOTON)))
-    assert out["guess"] == "Koffee Mameya" and out["candidates"][0]["providerId"] == "osm:N9"
+                        client(lambda r: httpx.Response(200, json=GEOCODED)))
+    assert out["guess"] == "Koffee Mameya" and out["candidates"][0]["providerId"] == "geoapify:p9"
 
 
 def test_reads_a_page_follows_safe_redirects_and_finds_the_place(monkeypatch):
     public(monkeypatch)
 
     def routes(r):
-        if r.url.host == "photon.komoot.io":
-            return httpx.Response(200, json=PHOTON)
+        if r.url.host == "api.geoapify.com":
+            return httpx.Response(200, json=GEOCODED)
         if host(r) == "short.link":
             return httpx.Response(301, headers={"location": "https://site.example/cafe"})
         if host(r) == "site.example":
@@ -63,10 +63,10 @@ def test_uses_claude_when_available(monkeypatch):
     seen = []
 
     def routes(r):
-        if r.url.host != "photon.komoot.io" and host(r) == "site.example":
+        if r.url.host != "api.geoapify.com" and host(r) == "site.example":
             return httpx.Response(200, text=PAGE, headers={"content-type": "text/html"})
-        seen.append(r.url.params["q"])
-        return httpx.Response(200, json={"features": []})
+        seen.append(r.url.params["text"])
+        return httpx.Response(200, json={"results": []})
     out = links.resolve("https://site.example/p", None, client(routes))
     assert seen == ["Kakeru Kiyosumi", "Kakeru"]
     assert "couldn't find it on the map" in out["message"]

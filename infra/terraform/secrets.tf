@@ -2,7 +2,7 @@
 # never pass through Terraform state. Only the Redis URL is written by Terraform (it is derived from its token).
 
 locals {
-  external_secrets = ["jwt-private-key", "jwt-public-key", "internal-jwk", "anthropic-api-key", "voyage-api-key"]
+  external_secrets = ["jwt-private-key", "jwt-public-key", "internal-jwk", "anthropic-api-key", "voyage-api-key", "places-api-key"]
 }
 
 resource "aws_secretsmanager_secret" "app" {

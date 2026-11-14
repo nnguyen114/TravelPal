@@ -29,6 +29,8 @@ services:
         sync: false
       - key: COOKIE_SECURE
         value: "true"
+      - key: PLACES_API_KEY
+        sync: false # Geoapify key (place search); the same key goes on travelpal-ai
 
   # Claude/Voyage features. Public (free services can't receive private traffic), but every /internal call needs a
   # short-lived token signed by the app's internal key.
@@ -47,6 +49,8 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: VOYAGE_API_KEY
+        sync: false
+      - key: PLACES_API_KEY
         sync: false
 
   # Rate limits, AI quotas, signed-out sessions, live updates.
