@@ -1,6 +1,7 @@
 package com.travelpal.auth;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -64,28 +65,28 @@ class AuthApiTest extends IntegrationTest {
     @Test
     void refreshRotatesAndReuseRevokesFamily() throws Exception {
         Login who = register();
-        MvcResult first = mvc.perform(post("/api/auth/refresh").cookie(new Cookie(COOKIE, who.refreshCookie())))
+        MvcResult first = mvc.perform(post("/api/auth/refresh").with(csrf()).cookie(new Cookie(COOKIE, who.refreshCookie())))
             .andExpect(status().isOk()).andReturn();
         String rotated = first.getResponse().getCookie(COOKIE).getValue();
 
         // replaying the old token is treated as theft: it fails and kills the rotated one too
-        mvc.perform(post("/api/auth/refresh").cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/auth/refresh").cookie(new Cookie(COOKIE, rotated))).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/refresh").with(csrf()).cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/refresh").with(csrf()).cookie(new Cookie(COOKIE, rotated))).andExpect(status().isUnauthorized());
     }
 
     @Test
     void logoutRevokesAndClearsCookie() throws Exception {
         Login who = register();
-        mvc.perform(post("/api/auth/logout").cookie(new Cookie(COOKIE, who.refreshCookie())))
+        mvc.perform(post("/api/auth/logout").with(csrf()).cookie(new Cookie(COOKIE, who.refreshCookie())))
             .andExpect(status().isNoContent()).andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
-        mvc.perform(post("/api/auth/refresh").cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/auth/logout")).andExpect(status().isNoContent());
+        mvc.perform(post("/api/auth/refresh").with(csrf()).cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/logout").with(csrf())).andExpect(status().isNoContent());
     }
 
     @Test
     void refreshWithoutOrWithGarbageCookieIsUnauthorized() throws Exception {
-        mvc.perform(post("/api/auth/refresh")).andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/auth/refresh").cookie(new Cookie(COOKIE, "garbage"))).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/refresh").with(csrf())).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/refresh").with(csrf()).cookie(new Cookie(COOKIE, "garbage"))).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -123,7 +124,7 @@ class AuthApiTest extends IntegrationTest {
         Login who = register();
         Login otherDevice = login(who);
         mvc.perform(auth(get("/api/me"), who)).andExpect(status().isOk());
-        mvc.perform(post("/api/auth/logout").cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isNoContent());
+        mvc.perform(post("/api/auth/logout").with(csrf()).cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isNoContent());
         mvc.perform(auth(get("/api/me"), who)).andExpect(status().isUnauthorized());
         // only this device's session ends
         mvc.perform(auth(get("/api/me"), otherDevice)).andExpect(status().isOk());
@@ -132,10 +133,10 @@ class AuthApiTest extends IntegrationTest {
     @Test
     void refreshReuseEndsTheAccessTokenToo() throws Exception {
         Login who = register();
-        MvcResult r = mvc.perform(post("/api/auth/refresh").cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isOk()).andReturn();
+        MvcResult r = mvc.perform(post("/api/auth/refresh").with(csrf()).cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isOk()).andReturn();
         Login rotated = new Login(com.jayway.jsonpath.JsonPath.read(r.getResponse().getContentAsString(), "$.accessToken"), who.userId(), null);
         mvc.perform(auth(get("/api/me"), rotated)).andExpect(status().isOk());
-        mvc.perform(post("/api/auth/refresh").cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/refresh").with(csrf()).cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isUnauthorized());
         mvc.perform(auth(get("/api/me"), rotated)).andExpect(status().isUnauthorized());
     }
 
@@ -145,7 +146,7 @@ class AuthApiTest extends IntegrationTest {
         var pool = java.util.concurrent.Executors.newFixedThreadPool(6);
         var calls = new java.util.ArrayList<java.util.concurrent.Callable<Integer>>();
         for (int i = 0; i < 6; i++) {
-            calls.add(() -> mvc.perform(post("/api/auth/refresh").cookie(new Cookie(COOKIE, who.refreshCookie()))).andReturn().getResponse().getStatus());
+            calls.add(() -> mvc.perform(post("/api/auth/refresh").with(csrf()).cookie(new Cookie(COOKIE, who.refreshCookie()))).andReturn().getResponse().getStatus());
         }
         long ok = 0;
         for (var f : pool.invokeAll(calls)) {
@@ -164,7 +165,7 @@ class AuthApiTest extends IntegrationTest {
         mvc.perform(json(delete("/api/me"), who, "{\"password\":\"correct-horse-battery\"}"))
             .andExpect(status().isNoContent()).andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
         mvc.perform(auth(get("/api/me"), who)).andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/auth/refresh").cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/refresh").with(csrf()).cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isUnauthorized());
     }
 
     private Login login(Login who) throws Exception {
@@ -173,5 +174,22 @@ class AuthApiTest extends IntegrationTest {
             .content("{\"email\":\"%s\",\"password\":\"correct-horse-battery\"}".formatted(email))).andExpect(status().isOk()).andReturn();
         return new Login(com.jayway.jsonpath.JsonPath.read(r.getResponse().getContentAsString(), "$.accessToken"), who.userId(),
             r.getResponse().getCookie(COOKIE).getValue());
+    }
+
+    @Test
+    void sessionCookieEndpointsNeedTheCsrfTokenTheAppGetsFromItsCookie() throws Exception {
+        Login who = register();
+        // A forged request carries the session cookie but can't read or send the CSRF token.
+        mvc.perform(post("/api/auth/refresh").cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/auth/logout").cookie(new Cookie(COOKIE, who.refreshCookie()))).andExpect(status().isForbidden());
+
+        // The app asks for its token cookie and echoes it in a header, like the browser code does.
+        Cookie xsrf = mvc.perform(get("/api/auth/csrf")).andExpect(status().isNoContent()).andReturn().getResponse().getCookie("XSRF-TOKEN");
+        org.assertj.core.api.Assertions.assertThat(xsrf.isHttpOnly()).as("the web app must be able to read it").isFalse();
+        mvc.perform(post("/api/auth/refresh").cookie(new Cookie(COOKIE, who.refreshCookie()), xsrf).header("X-XSRF-TOKEN", xsrf.getValue()))
+            .andExpect(status().isOk());
+
+        // Calls with a bearer token, and JSON login, don't need it.
+        mvc.perform(auth(get("/api/me"), who)).andExpect(status().isOk());
     }
 }

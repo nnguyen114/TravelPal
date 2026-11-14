@@ -27,9 +27,21 @@ async function parse<T>(res: Response): Promise<T> {
   return (res.status === 204 ? undefined : await res.json()) as T
 }
 
+const readXsrf = () => document.cookie.split('; ').find((c) => c.startsWith('XSRF-TOKEN='))?.slice('XSRF-TOKEN='.length)
+
+/**
+ * The two calls that act on the session cookie alone (refresh, logout) must echo the CSRF token, which only this
+ * site can read from its XSRF-TOKEN cookie. The first time, ask the server to set that cookie.
+ */
+async function csrfHeader(): Promise<Record<string, string>> {
+  if (!readXsrf()) await fetch('/api/auth/csrf', { credentials: 'same-origin' }).catch(() => undefined)
+  const token = readXsrf()
+  return token ? { 'X-XSRF-TOKEN': decodeURIComponent(token) } : {}
+}
+
 /** Trades the HttpOnly refresh cookie for a new access token. Concurrent callers share one request. */
 export function refreshSession(): Promise<Session | null> {
-  refreshing ??= send('/api/auth/refresh', { method: 'POST' })
+  refreshing ??= csrfHeader().then((headers) => send('/api/auth/refresh', { method: 'POST', headers }))
     .then(async (res) => {
       if (!res.ok) {
         accessToken = null
@@ -61,7 +73,7 @@ export async function startSession(path: '/api/auth/login' | '/api/auth/register
 /** Forgets the access token even if the server can't be reached; the server ends the session when it can. */
 export async function endSession(): Promise<void> {
   try {
-    await send('/api/auth/logout', { method: 'POST' })
+    await send('/api/auth/logout', { method: 'POST', headers: await csrfHeader() })
   } finally {
     accessToken = null
   }

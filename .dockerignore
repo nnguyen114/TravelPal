@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/target
+**/.venv
+**/.pytest_cache
+**/coverage
+.git
+.env
+infra

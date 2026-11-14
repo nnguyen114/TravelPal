@@ -1,7 +1,15 @@
 package com.travelpal.optimize;
 
 import jakarta.annotation.PreDestroy;
+import com.travelpal.assistant.AiServiceClient;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Map;
+import java.util.UUID;
+import tools.jackson.databind.json.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -15,7 +23,11 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.Message;
 
-/** SQS in both directions: jobs out to ai-service, results back on a long-polling virtual thread. */
+/**
+ * SQS in both directions: jobs out to ai-service, results back on a long-polling virtual thread. Where there is no
+ * queue service (travelpal.ai.queue=http), each job is posted to ai-service on its own virtual thread instead and the
+ * answer is handled exactly like a queued result.
+ */
 @Component
 public class OptimizeQueue {
     public record ResultReceived(String body) {}
@@ -28,9 +40,14 @@ public class OptimizeQueue {
     private volatile String resultsUrl;
     private volatile boolean running = true;
 
-    OptimizeQueue(AiProperties props, ApplicationEventPublisher events) {
+    private final AiServiceClient ai;
+    private final JsonMapper json;
+
+    OptimizeQueue(AiProperties props, ApplicationEventPublisher events, AiServiceClient ai, JsonMapper json) {
         this.props = props;
         this.events = events;
+        this.ai = ai;
+        this.json = json;
         var builder = SqsClient.builder().region(Region.of(props.region()));
         if (props.sqsEndpoint() != null && !props.sqsEndpoint().isBlank()) {
             // LocalStack: any static credentials work.
@@ -48,14 +65,35 @@ public class OptimizeQueue {
     }
 
     public void send(String body) {
+        if (props.direct()) {
+            Thread.ofVirtual().name("optimize-job").start(() -> events.publishEvent(new ResultReceived(runDirect(body))));
+            return;
+        }
         if (jobsUrl == null) {
             jobsUrl = url(props.jobsQueue());
         }
         sqs.sendMessage(r -> r.queueUrl(jobsUrl).messageBody(body));
     }
 
+    String runDirect(String body) {
+        try (InputStream in = ai.post("/internal/optimize", body, new UUID(0, 0), Duration.ofMinutes(3), "The optimizer")) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException | RuntimeException e) {
+            log.warn("Direct optimize call failed", e);
+            return json.writeValueAsString(Map.of("previewId", json.readTree(body).path("previewId").asString(), "status", "FAILED",
+                "error", "The optimizer is unavailable right now. Try again in a minute."));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return json.writeValueAsString(Map.of("previewId", json.readTree(body).path("previewId").asString(), "status", "FAILED",
+                "error", "The optimizer was interrupted. Try again."));
+        }
+    }
+
     @EventListener(ApplicationReadyEvent.class)
     void listen() {
+        if (props.direct()) {
+            return;
+        }
         Thread.ofVirtual().name("optimize-results").start(() -> {
             while (running) {
                 try {

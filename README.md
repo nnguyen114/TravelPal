@@ -28,6 +28,10 @@ Without `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` the API signs tokens with a throwaway
 (cd frontend && npm run coverage)     # Vitest, ≥80% lines / ≥70% branches
 ```
 
+## Test deployment on Render
+
+One Blueprint (`render.yaml`) on free plans: see [deploy/render/README.md](deploy/render/README.md).
+
 ## Deploying to AWS
 
 Infrastructure is Terraform in `infra/` (not applied yet): see [infra/README.md](infra/README.md).

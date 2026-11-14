@@ -42,3 +42,6 @@ target/
 
 # Local agent/editor config
 .claude/
+
+# Render key output
+deploy/render/keys.local.env
