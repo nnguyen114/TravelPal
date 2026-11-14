@@ -114,3 +114,26 @@ it('says when place search is down instead of showing no matches', async () => {
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('Place search is unavailable right now')
   expect(within(dialog).queryByText('Not finding it? It will be added as typed.')).not.toBeInTheDocument()
 })
+
+it('lets owners delete a trip and members leave one, after confirming', async () => {
+  const summary = (id: string, name: string, role: string) => ({ id, name, startDate: '2027-06-10', endDate: '2027-06-12', role, memberCount: 3, cities: ['Tokyo'] })
+  const calls = mockApi({
+    'GET /api/trips': () => json(200, [summary('t1', 'Japan 2027', 'OWNER'), summary('t2', 'Lisbon', 'EDITOR')]),
+    'DELETE /api/trips/t1': () => new Response(null, { status: 204 }),
+    'DELETE /api/trips/t2/members/u1': () => new Response(null, { status: 204 }),
+  })
+  renderAt('/', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Delete Japan 2027' }))
+  const confirm = screen.getByRole('dialog', { name: 'Delete this trip?' })
+  expect(confirm).toHaveTextContent('for you and the 2 other members')
+  await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }))
+  expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
+
+  await userEvent.click(screen.getByRole('button', { name: 'Delete Japan 2027' }))
+  await userEvent.click(within(screen.getByRole('dialog', { name: 'Delete this trip?' })).getByRole('button', { name: 'Delete trip' }))
+  await waitFor(() => expect(calls.some((c) => c.method === 'DELETE' && c.url === '/api/trips/t1')).toBe(true))
+
+  await userEvent.click(screen.getByRole('button', { name: 'Leave Lisbon' }))
+  await userEvent.click(within(screen.getByRole('dialog', { name: 'Leave this trip?' })).getByRole('button', { name: 'Leave trip' }))
+  await waitFor(() => expect(calls.some((c) => c.method === 'DELETE' && c.url === '/api/trips/t2/members/u1')).toBe(true))
+})

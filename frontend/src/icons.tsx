@@ -23,6 +23,13 @@ export const CloseIcon = ({ size = 20, color = '#44505E' }: P) => (
   <svg {...base(size, color)} strokeWidth={2.2}><path d="M6 6l12 12M18 6L6 18" /></svg>
 )
 
+export const TrashIcon = ({ size = 18, color = 'currentColor' }: P) => (
+  <svg {...base(size, color)}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+)
+export const LeaveIcon = ({ size = 18, color = 'currentColor' }: P) => (
+  <svg {...base(size, color)}><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10" /></svg>
+)
+
 export function Logo() {
   return <span className="logo"><PinIcon /></span>
 }
