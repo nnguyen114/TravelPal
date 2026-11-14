@@ -1,5 +1,10 @@
-import { LngLatBounds, Map as MapLibre, Marker, NavigationControl, type GeoJSONSource } from 'maplibre-gl'
+import { LngLatBounds, Map as MapLibre, Marker, NavigationControl, setWorkerUrl, type GeoJSONSource } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
+
+// MapLibre looks for its worker next to its own bundle, where production builds don't put it. Importing the file
+// with ?url makes Vite ship it, and this points MapLibre at it.
+setWorkerUrl(workerUrl)
 import { useEffect, useRef } from 'react'
 import type { Destination } from '../types'
 

@@ -1,4 +1,4 @@
-"""SQS worker: optimize jobs in, results out. Scale by running more ai-service tasks on queue depth."""
+"""Optimize jobs: from SQS (AWS, scale on queue depth) or straight over HTTP (hosts without a queue, e.g. Render)."""
 
 import json
 import logging
@@ -44,15 +44,19 @@ def handle(job: dict) -> dict:
     return result
 
 
+def run(job: dict) -> dict:
+    """One job -> the result message core-api expects, whether it came over SQS or HTTP."""
+    try:
+        return {"previewId": job["previewId"], "status": "READY", "result": handle(job)}
+    except Exception:  # one bad job must not stop the worker; core-api shows the failure
+        log.exception("optimize job %s failed", job.get("previewId"))
+        return {"previewId": job.get("previewId"), "status": "FAILED", "error": "The optimizer couldn't build a plan."}
+
+
 def process_once(sqs, jobs_url: str, results_url: str, wait_seconds: int = 10) -> int:
     msgs = sqs.receive_message(QueueUrl=jobs_url, MaxNumberOfMessages=5, WaitTimeSeconds=wait_seconds).get("Messages", [])
     for m in msgs:
-        job = json.loads(m["Body"])
-        try:
-            out = {"previewId": job["previewId"], "status": "READY", "result": handle(job)}
-        except Exception:  # one bad job must not stop the worker; core-api shows the failure
-            log.exception("optimize job %s failed", job.get("previewId"))
-            out = {"previewId": job.get("previewId"), "status": "FAILED", "error": "The optimizer couldn't build a plan."}
+        out = run(json.loads(m["Body"]))
         sqs.send_message(QueueUrl=results_url, MessageBody=json.dumps(out))
         sqs.delete_message(QueueUrl=jobs_url, ReceiptHandle=m["ReceiptHandle"])
     return len(msgs)

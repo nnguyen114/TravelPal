@@ -1,7 +1,7 @@
 name: infra
 on:
-  push: { branches: [main, develop], paths: ["infra/**", "core-api/Dockerfile", "ai-service/Dockerfile", ".github/workflows/infra.yml"] }
-  pull_request: { paths: ["infra/**", "core-api/Dockerfile", "ai-service/Dockerfile", ".github/workflows/infra.yml"] }
+  push: { branches: [main, develop], paths: ["infra/**", "deploy/**", "render.yaml", "core-api/Dockerfile", "ai-service/Dockerfile", ".github/workflows/infra.yml"] }
+  pull_request: { paths: ["infra/**", "deploy/**", "render.yaml", "core-api/Dockerfile", "ai-service/Dockerfile", ".github/workflows/infra.yml"] }
 permissions: { contents: read }
 jobs:
   terraform:
@@ -23,9 +23,14 @@ jobs:
         with: { scan-type: config, scan-ref: ., severity: "HIGH,CRITICAL", exit-code: "1" }
   images:
     runs-on: ubuntu-latest
-    strategy: { matrix: { service: [core-api, ai-service] } }
+    strategy:
+      matrix:
+        include:
+          - { name: core-api, file: core-api/Dockerfile, context: core-api }
+          - { name: ai-service, file: ai-service/Dockerfile, context: ai-service }
+          - { name: render-app, file: deploy/render/app.Dockerfile, context: . } # web app + core-api for Render
     steps:
       - uses: actions/checkout@v5
-      - run: docker build -t ${{ matrix.service }} ${{ matrix.service }}
+      - run: docker build -f ${{ matrix.file }} -t ${{ matrix.name }} ${{ matrix.context }}
       - uses: aquasecurity/trivy-action@v0.36.0
-        with: { image-ref: "${{ matrix.service }}", scanners: vuln, severity: "HIGH,CRITICAL", ignore-unfixed: true, exit-code: "1" }
+        with: { image-ref: "${{ matrix.name }}", scanners: vuln, severity: "HIGH,CRITICAL", ignore-unfixed: true, exit-code: "1" }

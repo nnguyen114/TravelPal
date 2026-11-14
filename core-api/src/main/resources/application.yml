@@ -34,6 +34,8 @@ travelpal:
   places-url: ${PLACES_URL:https://photon.komoot.io}
   ai:
     service-url: ${AI_SERVICE_URL:http://localhost:8090}
+    # sqs (AWS, LocalStack locally) or http (no queue service: jobs go straight to ai-service, e.g. on Render)
+    queue: ${OPTIMIZE_QUEUE:sqs}
     # LocalStack locally; set SQS_ENDPOINT empty in AWS to use the real endpoint and IAM role credentials.
     sqs-endpoint: ${SQS_ENDPOINT:http://localhost:4566}
     region: ${AWS_REGION:us-east-1}

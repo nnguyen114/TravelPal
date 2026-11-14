@@ -42,6 +42,24 @@ describe('api client', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
+  it('echoes the CSRF cookie on refresh, fetching it first if missing', async () => {
+    const fetch = vi.fn().mockResolvedValue(json(401))
+    vi.stubGlobal('fetch', fetch)
+    await refreshSession()
+    expect(new Headers(fetch.mock.calls[0][1].headers).get('X-XSRF-TOKEN')).toBe('test-xsrf')
+
+    document.cookie = 'XSRF-TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    fetch.mockClear()
+    fetch.mockImplementation(async (url: string) => {
+      if (url === '/api/auth/csrf') document.cookie = 'XSRF-TOKEN=fresh-token'
+      return json(401)
+    })
+    await refreshSession()
+    expect(fetch.mock.calls[0][0]).toBe('/api/auth/csrf')
+    expect(new Headers(fetch.mock.calls[1][1].headers).get('X-XSRF-TOKEN')).toBe('fresh-token')
+    document.cookie = 'XSRF-TOKEN=test-xsrf'
+  })
+
   it('logout calls the server', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetch)

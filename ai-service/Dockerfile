@@ -12,4 +12,5 @@ COPY app app
 RUN useradd --system --uid 10001 app
 USER 10001
 EXPOSE 8090
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090", "--proxy-headers"]
+# Hosts like Render pick the port through $PORT.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8090} --proxy-headers"]

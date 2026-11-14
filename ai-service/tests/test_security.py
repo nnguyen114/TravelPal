@@ -75,3 +75,15 @@ def test_verifies_against_core_api_jwks(monkeypatch):
     monkeypatch.setattr(sec, "jwks", lambda url: SimpleNamespace(get_signing_key_from_jwt=unknown))
     assert client.get("/internal/ping", headers={"Authorization": f"Bearer {token}"}).status_code == 401
     assert sec.jwks.__name__ == "<lambda>"
+
+
+def test_optimize_over_http_answers_like_the_queue_worker(signer):
+    job = {"previewId": "p1", "mode": "BALANCED", "scope": "TRIP", "dayIndex": None, "dayCount": 1, "startDate": "2027-06-10",
+           "cities": [{"name": "Tokyo", "lat": 35.68, "lng": 139.76}],
+           "destinations": [{"id": "a", "name": "Senso-ji", "lat": 35.71, "lng": 139.79, "dayIndex": None, "position": None,
+                             "startTime": None, "locked": False, "durationMin": 90, "flexibility": "FLEXIBLE"}]}
+    r = client.post("/internal/optimize", json=job, headers=signer())
+    assert r.status_code == 200
+    assert r.json()["previewId"] == "p1" and r.json()["status"] in ("READY", "FAILED")
+    assert client.post("/internal/optimize", json={"hello": 1}, headers=signer()).status_code == 422
+    assert client.post("/internal/optimize", json=job).status_code == 401
