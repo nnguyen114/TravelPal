@@ -178,3 +178,24 @@ it('keeps long trips tidy: a day picker instead of chips, and slim rows for open
   expect(day2).toHaveClass('day-empty')
   expect(within(day2).getByText('Nothing planned yet.')).toBeInTheDocument()
 })
+
+it('marks places without a map location and lets you place them from the edit dialog', async () => {
+  const unlocated = dest('Kamakura', 1, 0, { lat: null, lng: null, address: null })
+  const calls = mockApi({
+    'GET /api/trips/t1': () => json(200, trip()),
+    'GET /api/trips/t1/destinations': () => json(200, [unlocated]),
+    'GET /api/places/search': () => json(200, [{ name: 'Kamakura', address: 'Kanagawa, Japan', lat: 35.32, lng: 139.55, providerId: 'osm:R1' }]),
+    'PUT /api/trips/t1/destinations/Kamakura': (b) => json(200, b),
+  })
+  renderAt('/trips/t1', routes)
+  const day2 = await screen.findByRole('article', { name: 'Day 2' })
+  expect(within(day2).getByText(/not on the map yet/)).toBeInTheDocument()
+
+  await userEvent.click(within(day2).getByRole('button', { name: 'Edit' }))
+  const dialog = screen.getByRole('dialog', { name: 'Kamakura' })
+  // It looks the name up straight away; picking a match puts the place on the map when saved.
+  await userEvent.click(await within(dialog).findByRole('button', { name: /Kanagawa, Japan/ }))
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body)
+    .toMatchObject({ lat: 35.32, lng: 139.55, address: 'Kanagawa, Japan', providerId: 'osm:R1', dayIndex: 1 }))
+})

@@ -247,11 +247,14 @@ export function EditDestinationDialog({ trip, dest, onClose, onMoreLikeThis }: {
     },
   })
   const readOnly = trip.role === 'VIEWER'
+  // A place added by name only (e.g. while search was down) can be put on the map here.
+  const [located, setLocated] = useState<Place | null>(null)
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
     save.mutate(toInput(dest, {
+      ...(located && { lat: located.lat, lng: located.lng, address: located.address, providerId: located.providerId }),
       name: String(f.get('name')), dayIndex: dayValue(f), startTime: (f.get('startTime') as string) || null,
       durationMin: Number(f.get('duration')) || null, notes: (f.get('notes') as string) || null,
       locked: f.get('locked') === 'on', flexibility: f.get('flexibility') as Flexibility,
@@ -266,6 +269,9 @@ export function EditDestinationDialog({ trip, dest, onClose, onMoreLikeThis }: {
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <label className="field">Name<input name="name" required maxLength={200} defaultValue={dest.name} /></label>
+          {dest.lat == null && !readOnly && (
+            <PlaceSearch label="Map location (not set yet)" initial={dest.name} required={false} onPick={(p) => setLocated(p)} />
+          )}
           <DaySelect trip={trip} value={dest.dayIndex} />
           <div className="row" style={{ flexWrap: 'nowrap' }}>
             <label className="field" style={{ flex: 1 }}>Time<input name="startTime" type="time" defaultValue={dest.startTime?.slice(0, 5) ?? ''} /></label>

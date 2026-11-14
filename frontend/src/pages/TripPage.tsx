@@ -130,7 +130,8 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
             <button className="stop-main" onClick={() => onSelect(s.id)} onDoubleClick={() => onEdit(s)}>
               <span style={{ display: 'block', fontSize: 15, fontWeight: 700 }}>{s.name}</span>
               <span className="muted" style={{ display: 'block', fontSize: 13, marginTop: 2 }}>
-                {[s.address?.split(',')[0], s.durationMin && `about ${formatDuration(s.durationMin)}`, bestTime(s)].filter(Boolean).join(' · ')}
+                {[s.address?.split(',')[0], s.durationMin && `about ${formatDuration(s.durationMin)}`, bestTime(s),
+                  s.lat == null && 'not on the map yet'].filter(Boolean).join(' · ')}
               </span>
             </button>
             <span className="stop-actions">
@@ -161,6 +162,12 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
       )}
     </article>
   )
+}
+
+/** The map position of the city a day happens in, if that city has one. */
+function cityPoint(trip: Trip, day: number): [number, number] | undefined {
+  const c = cityForDay(trip.cities, dayDate(trip, day))
+  return c?.lat != null && c.lng != null ? [c.lng, c.lat] : undefined
 }
 
 const CHIPS_UP_TO = 5
@@ -285,7 +292,7 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
         <DayPicker trip={trip} days={days} active={activeDay} onPick={pickDay} />
         <div className="map-box">
           <Suspense fallback={null}>
-            <TripMap days={days.map((stops, i) => ({ color: dayColor(i), stops }))} activeDay={activeDay} selectedId={selectedId}
+            <TripMap days={days.map((stops, i) => ({ color: dayColor(i), stops, home: cityPoint(trip, i) }))} activeDay={activeDay} selectedId={selectedId}
               onSelect={selectFromMap} center={firstCity ? [firstCity.lng!, firstCity.lat!] : undefined} />
           </Suspense>
           <div className="map-note">

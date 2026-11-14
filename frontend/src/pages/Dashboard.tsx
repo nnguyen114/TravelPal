@@ -1,10 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { CreateTripDialog, Modal } from '../dialogs'
-import { Logo, PlusIcon } from '../icons'
+import { LeaveIcon, Logo, PlusIcon, TrashIcon } from '../icons'
 import { TripCover } from '../art'
 import { countdown, formatRange } from '../trip'
 import type { TripSummary } from '../types'
@@ -61,7 +61,8 @@ export function TopBar() {
   )
 }
 
-function TripCard({ trip, today }: { trip: TripSummary; today: Date }) {
+function TripCard({ trip, today, onRemove }: { trip: TripSummary; today: Date; onRemove: () => void }) {
+  const owner = trip.role === 'OWNER'
   return (
     <article className="card trip-card">
       <div style={{ height: 150, position: 'relative', overflow: 'hidden' }}>
@@ -76,10 +77,45 @@ function TripCard({ trip, today }: { trip: TripSummary; today: Date }) {
           <span>{formatRange(trip.startDate, trip.endDate)}</span>
           <span>{trip.memberCount} {trip.memberCount === 1 ? 'member' : 'members'}</span>
         </div>
-        <Link to={`/trips/${trip.id}`} aria-label={`Open ${trip.name}`} className="btn open-trip"
-          style={{ marginTop: 'auto', background: 'var(--accent-soft)', border: 0, color: 'var(--accent-ink)' }}>Open trip <span className="arrow" aria-hidden="true">→</span></Link>
+        <div className="row" style={{ marginTop: 'auto', flexWrap: 'nowrap', gap: 8 }}>
+          <Link to={`/trips/${trip.id}`} aria-label={`Open ${trip.name}`} className="btn open-trip"
+            style={{ flex: 1, background: 'var(--accent-soft)', border: 0, color: 'var(--accent-ink)' }}>Open trip <span className="arrow" aria-hidden="true">→</span></Link>
+          <button className="icon-btn" aria-label={`${owner ? 'Delete' : 'Leave'} ${trip.name}`} title={owner ? 'Delete trip' : 'Leave trip'}
+            onClick={onRemove}>
+            {owner ? <TrashIcon /> : <LeaveIcon />}
+          </button>
+        </div>
       </div>
     </article>
+  )
+}
+
+/** Owners delete a trip for everyone; other members leave it. Either way, ask first and say what happens. */
+function RemoveTripDialog({ trip, onClose }: { trip: TripSummary; onClose: () => void }) {
+  const { user } = useAuth()
+  const qc = useQueryClient()
+  const owner = trip.role === 'OWNER'
+  const remove = useMutation({
+    mutationFn: () => api(owner ? `/api/trips/${trip.id}` : `/api/trips/${trip.id}/members/${user!.id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['trips'] })
+      onClose()
+    },
+  })
+  const others = trip.memberCount - 1
+  return (
+    <Modal title={owner ? 'Delete this trip?' : 'Leave this trip?'} onClose={onClose}>
+      <p style={{ margin: 0, lineHeight: 1.55 }}>
+        {owner
+          ? <>“{trip.name}” and everything in it will be deleted{others > 0 ? `, for you and the ${others} other ${others === 1 ? 'member' : 'members'}` : ''}. This can't be undone.</>
+          : <>You'll lose access to “{trip.name}”. A member can invite you back with a new link.</>}
+      </p>
+      {remove.error && <div role="alert" className="error">{remove.error.message}</div>}
+      <div className="spread">
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-danger" disabled={remove.isPending} onClick={() => remove.mutate()}>{owner ? 'Delete trip' : 'Leave trip'}</button>
+      </div>
+    </Modal>
   )
 }
 
@@ -106,6 +142,7 @@ export function Dashboard() {
   const [params] = useSearchParams()
   const [destination] = useState(() => params.get('to')?.trim().slice(0, 120) ?? '')
   const [creating, setCreating] = useState(!!destination)
+  const [removing, setRemoving] = useState<TripSummary | null>(null)
   useEffect(() => {
     if (params.has('to')) navigate('/', { replace: true })
   }, [params, navigate])
@@ -128,7 +165,7 @@ export function Dashboard() {
         </div>
         {trips.error && <div role="alert" className="error" style={{ marginTop: 24 }}>{trips.error.message}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24, marginTop: 36 }}>
-          {trips.data?.map((t) => <TripCard key={t.id} trip={t} today={today} />)}
+          {trips.data?.map((t) => <TripCard key={t.id} trip={t} today={today} onRemove={() => setRemoving(t)} />)}
           <button className="new-trip" onClick={() => setCreating(true)}>
             <span className="plane" aria-hidden="true" style={{ width: 60, height: 60, borderRadius: '50%', background: '#fff', border: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-sm)' }}>
               <PlusIcon size={24} color="#0E7C74" />
@@ -139,6 +176,7 @@ export function Dashboard() {
         </div>
       </main>
       {creating && <CreateTripDialog destination={destination} onClose={() => setCreating(false)} />}
+      {removing && <RemoveTripDialog trip={removing} onClose={() => setRemoving(null)} />}
     </>
   )
 }
