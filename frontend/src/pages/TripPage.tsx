@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link, useParams } from 'react-router'
 import { api } from '../api'
 import { AddDestinationDialog, EditDestinationDialog, InviteDialog } from '../dialogs'
 import { LinkIcon, LockIcon, Logo, PlusIcon } from '../icons'
 import { useTripLive } from '../live'
+import { Empty } from '../art'
 import { AskAiButton, AssistantDrawer } from '../assistant'
 import { PaceSwitch, useOptimize } from '../optimize'
 import { SparkleIcon } from '../icons'
-import { bestTime, byDay, canEdit, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, freeTime, toInput } from '../trip'
+import { bestTime, byDay, canEdit, cityForDay, countdown, dayColor, dayDate, formatDay, formatDuration, formatRange, freeTime, toInput } from '../trip'
 import { DiscoverSheet, type DiscoverAsk } from '../discover'
 import type { Destination, Mode, Proposal, Trip } from '../types'
 import { SuggestionsTab } from './Suggestions'
@@ -24,6 +25,7 @@ const AVATAR_BG = ['#FFD9A8', '#BFE6E1', '#D9D4FB', '#FDE7DF']
 function TripHeader({ trip, tab, openProposals }: { trip: Trip; tab: Tab; openProposals: number }) {
   const shown = trip.members.slice(0, 3)
   const [inviting, setInviting] = useState(false)
+  const [today] = useState(() => new Date())
   return (
     <header className="topbar">
       <div className="topbar-inner" style={{ paddingBottom: 0, flexDirection: 'column', alignItems: 'stretch' }}>
@@ -37,8 +39,9 @@ function TripHeader({ trip, tab, openProposals }: { trip: Trip; tab: Tab; openPr
               <h1 style={{ marginTop: 2, fontSize: 24, fontWeight: 800 }}>{trip.name}</h1>
             </div>
             <div className="row" style={{ gap: 8 }}>
-              <span className="pill">{formatRange(trip.startDate, trip.endDate)}</span>
-              {trip.cities.map((c) => <span key={c.id} className="pill">{c.name}{c.locked && <LockIcon />}</span>)}
+              <span className="pill pill-date">{formatRange(trip.startDate, trip.endDate)}</span>
+              {trip.cities.map((c) => <span key={c.id} className="pill pill-city">{c.name}{c.locked && <LockIcon />}</span>)}
+              <span className="pill pill-soon">{countdown(trip.startDate, trip.endDate, today)}</span>
             </div>
           </div>
           <div className="row" style={{ gap: 14 }}>
@@ -96,7 +99,7 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
   }
 
   return (
-    <article className="card day-card" data-day={index} data-active={active} aria-labelledby={`day-${index}`}>
+    <article className="card day-card" data-day={index} data-active={active} aria-labelledby={`day-${index}`} style={{ '--c': color } as CSSProperties}>
       <div className="spread">
         <div className="row">
           <span className="dot" style={{ width: 12, height: 12, background: color }} aria-hidden="true" />
@@ -105,7 +108,7 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
         </div>
         <span className="muted" style={{ fontSize: 13, fontWeight: 600 }}>{stops.length} {stops.length === 1 ? 'stop' : 'stops'}</span>
       </div>
-      {stops.length === 0 && <p className="muted" style={{ margin: '14px 0 0', fontSize: 14 }}>Nothing planned yet.</p>}
+      {stops.length === 0 && <Empty compact title="Nothing planned yet.">A free day. Add a place, or leave it open and wander.</Empty>}
       <ol style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {stops.map((s, i) => (
           <li key={s.id} className="stop" data-selected={s.id === selectedId} data-stop={s.id}>
@@ -279,7 +282,7 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
       </div>
       {schedule.error && <div role="alert" className="error" style={{ marginTop: 16 }}>{schedule.error.message}</div>}
       <ul style={{ listStyle: 'none', margin: '20px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {shown.length === 0 && <li className="muted">No places here yet.</li>}
+        {shown.length === 0 && <li><Empty title="No places here yet.">Add a few spots you're curious about. They can sit here until you decide on a day.</Empty></li>}
         {shown.map((d) => (
           <li key={d.id} className="card spread" style={{ padding: '12px 16px', borderRadius: 16 }}>
             <button className="stop-main" onClick={() => setEditing(d)}>

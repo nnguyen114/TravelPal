@@ -5,14 +5,10 @@ import { api } from '../api'
 import { useAuth } from '../auth'
 import { CreateTripDialog, Modal } from '../dialogs'
 import { Logo, PlusIcon } from '../icons'
-import { formatRange } from '../trip'
+import { TripCover } from '../art'
+import { countdown, formatRange } from '../trip'
 import type { TripSummary } from '../types'
 
-const COVERS = [
-  { bg: '#E2F3F0', sun: '#FFD66B', hill: '#9FD4CB', front: '#5DB7AA' },
-  { bg: '#FDEBE4', sun: '#FFFFFF', hill: '#F6B49E', front: '#EE8B6B' },
-  { bg: '#ECEAFD', sun: '#FFD66B', hill: '#BDB4F7', front: '#8F82F0' },
-]
 
 function AccountDialog({ onClose }: { onClose: () => void }) {
   const { user, deleteAccount } = useAuth()
@@ -65,19 +61,13 @@ export function TopBar() {
   )
 }
 
-function TripCard({ trip, i }: { trip: TripSummary; i: number }) {
-  const c = COVERS[i % COVERS.length]
+function TripCard({ trip, today }: { trip: TripSummary; today: Date }) {
   return (
-    <article className="card" style={{ borderRadius: 22, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ height: 150, background: c.bg, position: 'relative' }}>
-        <svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMid slice" style={{ width: '100%', height: '100%', display: 'block' }} aria-hidden="true">
-          <circle cx="230" cy="44" r="26" fill={c.sun} />
-          <path d="M0 120 L70 62 L120 104 L170 70 L240 118 L300 90 L300 150 L0 150 Z" fill={c.hill} />
-          <path d="M0 150 L0 132 C 80 116, 170 146, 300 124 L300 150 Z" fill={c.front} />
-        </svg>
-        <span style={{ position: 'absolute', left: 14, top: 14, background: 'rgba(255,255,255,.92)', borderRadius: 999, padding: '5px 11px', fontSize: 12, fontWeight: 700 }}>
-          {trip.role === 'OWNER' ? 'Created by you' : 'Joined'}
-        </span>
+    <article className="card trip-card">
+      <div style={{ height: 150, position: 'relative', overflow: 'hidden' }}>
+        <TripCover seed={trip.id} />
+        <span className="trip-badge">{trip.role === 'OWNER' ? 'Created by you' : 'Joined'}</span>
+        <span className="trip-badge trip-when">{countdown(trip.startDate, trip.endDate, today)}</span>
       </div>
       <div style={{ padding: '18px 20px 20px', display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
         <h2 style={{ fontSize: 20, fontWeight: 800 }}>{trip.name}</h2>
@@ -86,11 +76,27 @@ function TripCard({ trip, i }: { trip: TripSummary; i: number }) {
           <span>{formatRange(trip.startDate, trip.endDate)}</span>
           <span>{trip.memberCount} {trip.memberCount === 1 ? 'member' : 'members'}</span>
         </div>
-        <Link to={`/trips/${trip.id}`} aria-label={`Open ${trip.name}`} className="btn"
-          style={{ marginTop: 'auto', background: 'var(--accent-soft)', border: 0, color: 'var(--accent-ink)' }}>Open Trip</Link>
+        <Link to={`/trips/${trip.id}`} aria-label={`Open ${trip.name}`} className="btn open-trip"
+          style={{ marginTop: 'auto', background: 'var(--accent-soft)', border: 0, color: 'var(--accent-ink)' }}>Open trip <span className="arrow" aria-hidden="true">→</span></Link>
       </div>
     </article>
   )
+}
+
+/** A friendly hello that fits the hour. */
+function greeting(name: string | undefined, now: Date) {
+  const h = now.getHours()
+  const part = h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
+  return `${part}${name ? `, ${name}` : ''}`
+}
+
+function upcomingLine(trips: TripSummary[] | undefined, today: Date) {
+  if (!trips) return 'Loading your trips…'
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  const ahead = trips.filter((t) => t.endDate >= todayIso).length
+  if (trips.length === 0) return 'No trips yet. Every good one starts with a single city.'
+  if (ahead === 0) return 'All caught up. Where to next?'
+  return `${ahead} ${ahead === 1 ? 'trip' : 'trips'} coming up. Where to next?`
 }
 
 export function Dashboard() {
@@ -104,6 +110,7 @@ export function Dashboard() {
     if (params.has('to')) navigate('/', { replace: true })
   }, [params, navigate])
   const trips = useQuery({ queryKey: ['trips'], queryFn: () => api<TripSummary[]>('/api/trips') })
+  const [today] = useState(() => new Date())
 
   return (
     <>
@@ -111,8 +118,9 @@ export function Dashboard() {
       <main className="page">
         <div className="spread" style={{ alignItems: 'flex-end', gap: 20 }}>
           <div>
-            <p className="muted" style={{ margin: 0, fontWeight: 600 }}>Hi {user?.displayName}, where to next?</p>
+            <p className="muted" style={{ margin: 0, fontWeight: 700 }}>{greeting(user?.displayName, today)} 👋</p>
             <h1 style={{ fontSize: 40, fontWeight: 800, marginTop: 6 }}>My Trips</h1>
+            <p className="muted" style={{ margin: '6px 0 0' }}>{upcomingLine(trips.data, today)}</p>
           </div>
           <button className="btn btn-primary" style={{ minHeight: 48, borderRadius: 14 }} onClick={() => setCreating(true)}>
             <PlusIcon /> Create Trip
@@ -120,14 +128,13 @@ export function Dashboard() {
         </div>
         {trips.error && <div role="alert" className="error" style={{ marginTop: 24 }}>{trips.error.message}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24, marginTop: 36 }}>
-          {trips.data?.map((t, i) => <TripCard key={t.id} trip={t} i={i} />)}
-          <button onClick={() => setCreating(true)}
-            style={{ minHeight: 330, borderRadius: 22, border: '2px dashed var(--line-2)', background: 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'var(--ink-2)', fontSize: 15, fontWeight: 700 }}>
-            <span style={{ width: 52, height: 52, borderRadius: '50%', background: '#fff', border: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <PlusIcon size={22} color="#0E7C74" />
+          {trips.data?.map((t) => <TripCard key={t.id} trip={t} today={today} />)}
+          <button className="new-trip" onClick={() => setCreating(true)}>
+            <span className="plane" aria-hidden="true" style={{ width: 60, height: 60, borderRadius: '50%', background: '#fff', border: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-sm)' }}>
+              <PlusIcon size={24} color="#0E7C74" />
             </span>
             Start a new trip
-            <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}>Name, one destination, dates. That is it.</span>
+            <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}>A name, one destination and dates. That's it.</span>
           </button>
         </div>
       </main>

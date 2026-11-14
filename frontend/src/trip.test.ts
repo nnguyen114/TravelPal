@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bestTime, byDay, cityForDay, dayColor, dayDate, formatDay, formatDuration, formatRange, toInput } from './trip'
+import { bestTime, byDay, cityForDay, countdown, dayColor, dayDate, formatDay, formatDuration, formatRange, toInput } from './trip'
 import type { City, Destination, Trip } from './types'
 
 const city = (name: string, startDate: string | null = null, endDate: string | null = null): City =>
@@ -47,5 +47,20 @@ describe('trip helpers', () => {
     expect(days.map((d) => d.map((x) => x.id))).toEqual([['a', 'b'], ['c']])
     expect(dayColor(7)).toBe(dayColor(0))
     expect(toInput(dest('a', 0, 0), { locked: true })).not.toHaveProperty('id')
+  })
+})
+
+describe('countdown', () => {
+  const on = (d: string) => new Date(`${d}T09:30:00`)
+  it('counts down in days, weeks, then months', () => {
+    expect(countdown('2027-04-02', '2027-04-05', on('2027-03-27'))).toBe('In 6 days')
+    expect(countdown('2027-04-02', '2027-04-05', on('2027-03-05'))).toBe('In 4 weeks')
+    expect(countdown('2027-04-02', '2027-04-05', on('2026-11-13'))).toBe('In 5 months')
+    expect(countdown('2027-04-02', '2027-04-05', on('2027-04-01'))).toBe('Tomorrow')
+  })
+  it('follows the trip while it happens and after', () => {
+    expect(countdown('2027-04-02', '2027-04-05', on('2027-04-02'))).toBe('Day 1 of 4')
+    expect(countdown('2027-04-02', '2027-04-05', on('2027-04-05'))).toBe('Day 4 of 4')
+    expect(countdown('2027-04-02', '2027-04-05', on('2027-04-06'))).toBe('Done. Hope it was great')
   })
 })
