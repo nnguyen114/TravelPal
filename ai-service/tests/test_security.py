@@ -87,3 +87,26 @@ def test_optimize_over_http_answers_like_the_queue_worker(signer):
     assert r.json()["previewId"] == "p1" and r.json()["status"] in ("READY", "FAILED")
     assert client.post("/internal/optimize", json={"hello": 1}, headers=signer()).status_code == 422
     assert client.post("/internal/optimize", json=job).status_code == 401
+
+
+def test_pasted_keys_are_repaired(signer, monkeypatch):
+    import os
+
+    from app.security import normalize_pem
+    pem = os.environ["INTERNAL_JWT_PUBLIC_KEY"]
+    body = "".join(pem.split("-----")[2].split())
+    for mangled in [pem.replace("\n", " "), pem.replace("\n", "\\n"), f'"{pem}"', body]:
+        monkeypatch.setenv("INTERNAL_JWT_PUBLIC_KEY", mangled)
+        assert normalize_pem(mangled) == normalize_pem(pem)
+        assert client.get("/internal/ping", headers=signer()).status_code == 200
+
+
+def test_unreadable_pinned_key_is_reported_at_startup(monkeypatch, caplog):
+    from app.security import check_configured_key
+    monkeypatch.setenv("INTERNAL_JWT_PUBLIC_KEY", "not a key")
+    check_configured_key()
+    assert "not a readable public key" in caplog.text
+
+
+def test_api_description_is_not_published():
+    assert client.get("/openapi.json").status_code == 404

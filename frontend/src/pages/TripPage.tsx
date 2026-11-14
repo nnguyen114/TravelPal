@@ -98,6 +98,20 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
     reorder.mutate({ day: index, ids })
   }
 
+  const city = cityForDay(trip.cities, date)?.name
+  if (stops.length === 0) {
+    // Long trips have many open days: keep them to one slim row each so the planned days stand out.
+    return (
+      <article className="card day-card day-empty" data-day={index} data-active={active} aria-labelledby={`day-${index}`} style={{ '--c': color } as CSSProperties}>
+        <span className="dot" style={{ width: 10, height: 10, background: color }} aria-hidden="true" />
+        <h2 id={`day-${index}`}>Day {index + 1}</h2>
+        <span className="muted day-empty-date">{formatDay(date)}{city && ` · ${city}`}</span>
+        <span className="muted day-empty-note">Nothing planned yet.</span>
+        {editable && <button className="btn btn-soft" onClick={onAdd} aria-label={`Add a place to Day ${index + 1}`}>+ Add</button>}
+      </article>
+    )
+  }
+
   return (
     <article className="card day-card" data-day={index} data-active={active} aria-labelledby={`day-${index}`} style={{ '--c': color } as CSSProperties}>
       <div className="spread">
@@ -108,7 +122,6 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
         </div>
         <span className="muted" style={{ fontSize: 13, fontWeight: 600 }}>{stops.length} {stops.length === 1 ? 'stop' : 'stops'}</span>
       </div>
-      {stops.length === 0 && <Empty compact title="Nothing planned yet.">A free day. Add a place, or leave it open and wander.</Empty>}
       <ol style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {stops.map((s, i) => (
           <li key={s.id} className="stop" data-selected={s.id === selectedId} data-stop={s.id}>
@@ -150,6 +163,47 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
   )
 }
 
+const CHIPS_UP_TO = 5
+
+/** Which day the map shows: chips for short trips, a compact stepper with a menu for long ones. */
+function DayPicker({ trip, days, active, onPick }: {
+  trip: Trip; days: Destination[][]; active: number | null; onPick: (day: number | null) => void
+}) {
+  if (days.length <= CHIPS_UP_TO) {
+    return (
+      <div className="row" style={{ gap: 8 }} role="group" aria-label="Show day on map">
+        {days.map((_, i) => (
+          <button key={i} className="day-chip" aria-pressed={active === i} onClick={() => onPick(i)}>
+            <span className="dot" style={{ background: dayColor(i) }} aria-hidden="true" />Day {i + 1}
+          </button>
+        ))}
+        <button className="day-chip" aria-pressed={active === null} onClick={() => onPick(null)}>All days</button>
+      </div>
+    )
+  }
+  const last = days.length - 1
+  const at = active ?? -1
+  return (
+    <div className="day-picker" role="group" aria-label="Show day on map">
+      <button className="icon-btn day-step" aria-label="Previous day" disabled={at <= 0} onClick={() => onPick(at - 1)}>‹</button>
+      <label className="day-select" style={{ '--c': active === null ? 'var(--muted)' : dayColor(active) } as CSSProperties}>
+        <span className="dot" aria-hidden="true" />
+        <span className="sr-only">Day shown on map</span>
+        <select value={active ?? 'all'} onChange={(e) => onPick(e.target.value === 'all' ? null : Number(e.target.value))}>
+          <option value="all">All days · {days.flat().length} places</option>
+          {days.map((stops, i) => (
+            <option key={i} value={i}>
+              Day {i + 1} · {formatDay(dayDate(trip, i))}{stops.length ? ` · ${stops.length} ${stops.length === 1 ? 'stop' : 'stops'}` : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button className="icon-btn day-step" aria-label="Next day" disabled={at >= last} onClick={() => onPick(at + 1)}>›</button>
+      <button className="day-chip" aria-pressed={active === null} onClick={() => onPick(null)}>All days</button>
+    </div>
+  )
+}
+
 function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destination[] }) {
   const days = useMemo(() => byDay(trip, destinations), [trip, destinations])
   const [mode, setMode] = useState<Mode>('BALANCED')
@@ -161,17 +215,26 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
   const [editing, setEditing] = useState<Destination | null>(null)
   const [discover, setDiscover] = useState<DiscoverAsk | null>(null)
   const list = useRef<HTMLElement>(null)
+  // After someone picks a day, the scroll that brings it into view mustn't hand the map to its neighbour.
+  const pickedAt = useRef(0)
 
   // As day sections scroll past, the map follows the one at the top of the viewport.
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined') return
     const io = new IntersectionObserver((entries) => {
       const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]
-      if (top) setActiveDay(Number((top.target as HTMLElement).dataset.day))
+      if (top && performance.now() - pickedAt.current > 1200) setActiveDay(Number((top.target as HTMLElement).dataset.day))
     }, { rootMargin: '-10% 0px -60% 0px' })
     list.current?.querySelectorAll('[data-day]').forEach((el) => io.observe(el))
     return () => io.disconnect()
   }, [days.length])
+
+  /** Show a day on the map and bring it into view in the itinerary. */
+  function pickDay(day: number | null) {
+    pickedAt.current = performance.now()
+    setActiveDay(day)
+    if (day !== null) list.current?.querySelector(`[data-day="${day}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   function selectFromMap(id: string) {
     setSelectedId(id)
@@ -219,14 +282,7 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
       </section>
 
       <section aria-label="Map" className="card map-panel">
-        <div className="row" style={{ gap: 8 }} role="group" aria-label="Show day on map">
-          {days.map((_, i) => (
-            <button key={i} className="day-chip" aria-pressed={activeDay === i} onClick={() => setActiveDay(i)}>
-              <span className="dot" style={{ background: dayColor(i) }} aria-hidden="true" />Day {i + 1}
-            </button>
-          ))}
-          <button className="day-chip" aria-pressed={activeDay === null} onClick={() => setActiveDay(null)}>All days</button>
-        </div>
+        <DayPicker trip={trip} days={days} active={activeDay} onPick={pickDay} />
         <div className="map-box">
           <Suspense fallback={null}>
             <TripMap days={days.map((stops, i) => ({ color: dayColor(i), stops }))} activeDay={activeDay} selectedId={selectedId}
