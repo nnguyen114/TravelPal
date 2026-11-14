@@ -39,7 +39,7 @@ public class SecurityConfig {
     SecurityFilterChain api(HttpSecurity http) throws Exception {
         http
             // Stateless bearer-token API. The only cookie (refresh) is HttpOnly + SameSite=Strict + Path=/api/auth.
-            .csrf(c -> c.disable())
+            .csrf(c -> {})
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .headers(h -> h.contentSecurityPolicy(c -> c.policyDirectives("default-src 'none'; frame-ancestors 'none'")))
             .authorizeHttpRequests(a -> a
