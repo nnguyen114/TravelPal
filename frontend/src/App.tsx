@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './auth'
 import { AuthPage } from './pages/AuthPage'
 import { Dashboard } from './pages/Dashboard'
 import { JoinPage } from './pages/JoinPage'
+import { Landing } from './landing/Landing'
 import { OptimizePage } from './pages/OptimizePage'
 import { TripPage } from './pages/TripPage'
 
@@ -21,7 +22,16 @@ const queryClient = makeQueryClient()
 function Routed() {
   const { user, ready } = useAuth()
   if (!ready) return null
-  if (!user) return <AuthPage />
+  if (!user) {
+    // Other paths (an invite link, a trip) show sign-in and then continue to where the visitor was going.
+    return (
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/signup" element={<AuthPage initialMode="register" />} />
+        <Route path="*" element={<AuthPage />} />
+      </Routes>
+    )
+  }
   return (
     <Routes>
       <Route path="/trips/:tripId" element={<TripPage tab="main" />} />

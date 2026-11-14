@@ -29,22 +29,29 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
 const errorText = (e: unknown) => (e ? <div role="alert" className="error">{(e as Error).message}</div> : null)
 
 /** Searches places through core-api; picking one fills the form, typing alone is a manual entry. */
-export function PlaceSearch({ label, bias, onPick, required = true }: {
+export function PlaceSearch({ label, bias, onPick, required = true, initial = '' }: {
   label: string; bias?: { lat: number | null; lng: number | null }; onPick: (p: Place | null, text: string) => void; required?: boolean
+  initial?: string
 }) {
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(initial)
   const [results, setResults] = useState<Place[]>([])
   const [picked, setPicked] = useState<string | null>(null)
 
-  async function search() {
-    if (!q.trim()) return
-    const params = new URLSearchParams({ q })
+  async function search(text = q) {
+    if (!text.trim()) return
+    const params = new URLSearchParams({ q: text })
     if (bias?.lat != null && bias?.lng != null) {
       params.set('lat', String(bias.lat))
       params.set('lng', String(bias.lng))
     }
     setResults(await api<Place[]>(`/api/places/search?${params}`).catch(() => []))
   }
+
+  // Arriving with a destination already chosen (e.g. from the landing page): look it up straight away.
+  const first = useRef(initial)
+  useEffect(() => {
+    if (first.current.trim()) search(first.current)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="field">
@@ -53,7 +60,7 @@ export function PlaceSearch({ label, bias, onPick, required = true }: {
         <input id="place-q" style={{ flex: 1 }} value={q} required={required} maxLength={200}
           onChange={(e) => { setQ(e.target.value); setPicked(null); onPick(null, e.target.value) }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); search() } }} />
-        <button type="button" className="btn" onClick={search}>Search</button>
+        <button type="button" className="btn" onClick={() => search()}>Search</button>
       </div>
       {results.length > 0 && !picked && (
         <ul aria-label="Search results" style={{ listStyle: 'none', margin: 0, padding: 0, border: '1px solid var(--line)', borderRadius: 12, maxHeight: 220, overflow: 'auto' }}>
@@ -109,9 +116,9 @@ function LinkImport({ trip, onPick }: { trip: Trip; onPick: (p: Place) => void }
   )
 }
 
-export function CreateTripDialog({ onClose }: { onClose: () => void }) {
+export function CreateTripDialog({ onClose, destination = '' }: { onClose: () => void; destination?: string }) {
   const navigate = useNavigate()
-  const [place, setPlace] = useState<{ p: Place | null; text: string }>({ p: null, text: '' })
+  const [place, setPlace] = useState<{ p: Place | null; text: string }>({ p: null, text: destination })
   const create = useMutation({
     mutationFn: (body: unknown) => api<Trip>('/api/trips', { method: 'POST', body }),
     onSuccess: (t) => navigate(`/trips/${t.id}`),
@@ -129,8 +136,9 @@ export function CreateTripDialog({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="Create a trip" onClose={onClose}>
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <label className="field">Trip name<input name="name" required maxLength={120} placeholder="Japan 2027" /></label>
-        <PlaceSearch label="Destination" onPick={(p, text) => setPlace({ p, text })} />
+        <label className="field">Trip name<input name="name" required maxLength={120} placeholder="Japan 2027"
+          defaultValue={destination ? `${destination} trip` : undefined} /></label>
+        <PlaceSearch label="Destination" initial={destination} onPick={(p, text) => setPlace({ p, text })} />
         <div className="row" style={{ flexWrap: 'nowrap' }}>
           <label className="field" style={{ flex: 1 }}>Start<input name="startDate" type="date" required /></label>
           <label className="field" style={{ flex: 1 }}>End<input name="endDate" type="date" required /></label>
