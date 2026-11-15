@@ -56,6 +56,25 @@ class ProposalApiTest extends IntegrationTest {
     }
 
     @Test
+    void listPagesNewestFirstByStatusWithCounts() throws Exception {
+        String first = propose(owner, "[{\"kind\":\"ADD\",\"name\":\"A\"}]");
+        String second = propose(owner, "[{\"kind\":\"ADD\",\"name\":\"B\"}]");
+        String closed = propose(owner, "[{\"kind\":\"ADD\",\"name\":\"C\"}]");
+        mvc.perform(auth(post(base + "/proposals/" + closed + "/close"), owner)).andExpect(status().isOk());
+        mvc.perform(auth(get(base + "/proposals/counts"), viewer))
+            .andExpect(jsonPath("$.OPEN").value(2)).andExpect(jsonPath("$.CLOSED").value(1)).andExpect(jsonPath("$.MERGED").value(0));
+
+        var page1 = mvc.perform(auth(get(base + "/proposals?status=OPEN&limit=1"), viewer))
+            .andExpect(jsonPath("$", hasSize(1))).andExpect(jsonPath("$[0].id").value(second)).andReturn();
+        String next = "&before=" + read(page1, "$[0].createdAt") + "&beforeId=" + second;
+        mvc.perform(auth(get(base + "/proposals?status=OPEN&limit=1" + next), viewer))
+            .andExpect(jsonPath("$", hasSize(1))).andExpect(jsonPath("$[0].id").value(first));
+        mvc.perform(auth(get(base + "/proposals?status=CLOSED"), viewer)).andExpect(jsonPath("$[0].id").value(closed));
+        mvc.perform(auth(get(base + "/proposals?status=NOPE"), viewer)).andExpect(status().isBadRequest());
+        mvc.perform(auth(get(base + "/proposals/counts"), register())).andExpect(status().isNotFound());
+    }
+
+    @Test
     void viewerProposesEveryoneDiscussesEditorMerges() throws Exception {
         String id = propose(viewer, "[{\"kind\":\"ADD\",\"name\":\"Tsukiji Outer Market\",\"dayIndex\":2,\"startTime\":\"08:00\"},"
             + "{\"kind\":\"MOVE\",\"destinationId\":\"" + sensoji + "\",\"dayIndex\":1}]");
@@ -111,6 +130,8 @@ class ProposalApiTest extends IntegrationTest {
         mvc.perform(json(post(base + "/proposals"), owner, bad.formatted("[{\"kind\":\"ADD\"}]"))).andExpect(status().isBadRequest());
         mvc.perform(json(post(base + "/proposals"), owner, bad.formatted("[{\"name\":\"x\"}]"))).andExpect(status().isBadRequest());
         mvc.perform(json(post(base + "/proposals"), owner, bad.formatted("[{\"kind\":\"ADD\",\"name\":\"x\",\"dayIndex\":7}]"))).andExpect(status().isBadRequest());
+        mvc.perform(json(post(base + "/proposals"), owner, bad.formatted("[{\"kind\":\"ADD\",\"name\":\"x\",\"lat\":999}]"))).andExpect(status().isBadRequest());
+        mvc.perform(json(post(base + "/proposals"), owner, bad.formatted("[{\"kind\":\"ADD\",\"name\":\"x\",\"durationMin\":-5}]"))).andExpect(status().isBadRequest());
         mvc.perform(json(post(base + "/proposals"), owner, bad.formatted("[{\"kind\":\"REMOVE\",\"destinationId\":\"" + UUID.randomUUID() + "\"}]")))
             .andExpect(status().isBadRequest());
         mvc.perform(json(post(base + "/proposals"), owner, "{\"title\":\"\",\"changes\":[{\"kind\":\"ADD\",\"name\":\"x\"}]}")).andExpect(status().isBadRequest());

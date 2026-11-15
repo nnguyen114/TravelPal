@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { api } from '../api'
 import { useAuth } from '../auth'
@@ -19,7 +19,7 @@ export function MembersTab({ trip }: { trip: Trip }) {
   })
   const remove = useMutation({
     mutationFn: (id: string) => api(`/api/trips/${trip.id}/members/${id}`, { method: 'DELETE' }),
-    onSuccess: (_, id) => (id === user?.id ? navigate('/') : refresh()),
+    onSuccess: (_, id) => (id === user?.id ? navigate('/trips') : refresh()),
   })
   const error = setRole.error ?? remove.error
 
@@ -67,10 +67,17 @@ export function timeAgo(iso: string, now = Date.now()): string {
   return ago.format(Math.round(s / 86400), 'day')
 }
 
+const EVENTS_PAGE = 30
+
 export function ActivityTab({ trip }: { trip: Trip }) {
   const qc = useQueryClient()
-  // ponytail: newest 100 only; the API pages with ?before= when older history is needed in the UI.
-  const events = useQuery({ queryKey: ['events', trip.id], queryFn: () => api<HistoryEntry[]>(`/api/trips/${trip.id}/events?limit=100`) })
+  // A page at a time, newest first; "Show older" asks for the events before the oldest one shown.
+  const events = useInfiniteQuery({
+    queryKey: ['events', trip.id],
+    queryFn: ({ pageParam }) => api<HistoryEntry[]>(`/api/trips/${trip.id}/events?limit=${EVENTS_PAGE}${pageParam ? `&before=${pageParam}` : ''}`),
+    initialPageParam: 0,
+    getNextPageParam: (last) => (last.length < EVENTS_PAGE ? undefined : last[last.length - 1].id),
+  })
   const undo = useMutation({
     mutationFn: (id: number) => api(`/api/trips/${trip.id}/events/${id}/undo`, { method: 'POST' }),
     onSettled: () => {
@@ -86,7 +93,7 @@ export function ActivityTab({ trip }: { trip: Trip }) {
       </p>
       {(events.error ?? undo.error) && <div role="alert" className="error">{(events.error ?? undo.error)!.message}</div>}
       <ol style={{ listStyle: 'none', padding: 0, margin: '16px 0 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {events.data?.map((e) => (
+        {events.data?.pages.flat().map((e) => (
           <li key={e.id} className="spread" style={{ padding: '10px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)' }}>
             <span style={{ fontSize: 14, textDecoration: e.undone ? 'line-through' : undefined, color: e.undone ? 'var(--muted)' : undefined }}>
               <strong>{e.actorName ?? 'Someone'}</strong> {e.summary}
@@ -98,6 +105,12 @@ export function ActivityTab({ trip }: { trip: Trip }) {
           </li>
         ))}
       </ol>
+      {events.data?.pages[0].length === 0 && <p className="muted">Nothing has changed yet.</p>}
+      {events.hasNextPage && (
+        <button className="btn" style={{ marginTop: 12 }} disabled={events.isFetchingNextPage} onClick={() => events.fetchNextPage()}>
+          {events.isFetchingNextPage ? 'Loading…' : 'Show older'}
+        </button>
+      )}
     </main>
   )
 }

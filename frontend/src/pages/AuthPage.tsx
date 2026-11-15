@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '../auth'
+import { PasswordInput } from '../dialogs'
 import { Logo } from '../icons'
 import { Scene } from '../landing/Scene'
 import '../landing/landing.css'
@@ -42,11 +43,8 @@ export function AuthPage({ initialMode = 'login' }: { initialMode?: 'login' | 'r
             <label className="field">Your name<input name="displayName" required maxLength={80} autoComplete="name" /></label>
           )}
           <label className="field">Email<input name="email" type="email" required autoComplete="email" /></label>
-          <label className="field">
-            Password
-            <input name="password" type="password" required minLength={isLogin ? 1 : 10} maxLength={128}
-              autoComplete={isLogin ? 'current-password' : 'new-password'} aria-describedby={isLogin ? undefined : 'pw-hint'} />
-          </label>
+          <PasswordInput name="password" required minLength={isLogin ? 1 : 10} maxLength={128}
+            autoComplete={isLogin ? 'current-password' : 'new-password'} aria-describedby={isLogin ? undefined : 'pw-hint'} />
           {!isLogin && <span id="pw-hint" className="muted" style={{ fontSize: 12, marginTop: -10 }}>At least 10 characters.</span>}
           {error && <div role="alert" className="error">{error}</div>}
           <button className="btn btn-primary" style={{ minHeight: 50 }} disabled={busy}>{isLogin ? 'Log in' : 'Create account'}</button>

@@ -4,6 +4,7 @@ import { Route } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import { json, mockApi, renderAt, trip } from './test-utils'
 import { TripPage } from './pages/TripPage'
+import { recent } from './assistant'
 
 vi.mock('./map/TripMap', () => ({ TripMap: () => null }))
 afterEach(() => vi.unstubAllGlobals())
@@ -79,4 +80,13 @@ it('surfaces HTTP failures like quota limits', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
   await userEvent.type(screen.getByLabelText('Message the assistant'), 'hi{Enter}')
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('hourly AI limit'))
+})
+
+it('sends only the most recent 40 messages, starting with the traveler', () => {
+  const msgs = Array.from({ length: 45 }, (_, i) => ({ role: (i % 2 ? 'assistant' : 'user') as 'user' | 'assistant', content: `m${i}`, proposals: [] }))
+  const sent = recent(msgs)
+  expect(sent.length).toBe(39)
+  expect(sent[0]).toEqual({ role: 'user', content: 'm6' })
+  expect(sent.at(-1)).toEqual({ role: 'user', content: 'm44' })
+  expect(recent([{ role: 'assistant', content: '', proposals: [] }])).toEqual([])
 })

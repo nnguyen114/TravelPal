@@ -34,6 +34,8 @@ function Routed() {
   }
   return (
     <Routes>
+      <Route path="/" element={<Landing signedIn />} />
+      <Route path="/trips" element={<Dashboard />} />
       <Route path="/trips/:tripId" element={<TripPage tab="main" />} />
       <Route path="/trips/:tripId/destinations" element={<TripPage tab="destinations" />} />
       <Route path="/trips/:tripId/members" element={<TripPage tab="members" />} />

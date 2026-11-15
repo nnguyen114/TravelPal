@@ -9,7 +9,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 const routes = (
   <>
-    <Route path="/" element={<Dashboard />} />
+    <Route path="/trips" element={<Dashboard />} />
     <Route path="/trips/:id" element={<h1>Workspace</h1>} />
   </>
 )
@@ -21,7 +21,7 @@ it('lists created and joined trips as cards', async () => {
       { id: 't2', name: 'Lisbon', startDate: '2027-09-02', endDate: '2027-09-05', role: 'EDITOR', memberCount: 1, cities: ['Lisbon'] },
     ]),
   })
-  renderAt('/', routes)
+  renderAt('/trips', routes)
   expect(await screen.findByRole('heading', { name: 'Japan 2027' })).toBeInTheDocument()
   expect(screen.getByText('Tokyo · Kyoto')).toBeInTheDocument()
   expect(screen.getByText('5 members')).toBeInTheDocument()
@@ -37,7 +37,7 @@ it('creates a trip from a searched destination and opens it', async () => {
     'GET /api/places/search': () => json(200, [{ name: 'Tokyo', address: 'Japan', lat: 35.68, lng: 139.76, providerId: 'osm:R1' }]),
     'POST /api/trips': () => json(201, trip()),
   })
-  renderAt('/', routes)
+  renderAt('/trips', routes)
   await userEvent.click(await screen.findByRole('button', { name: /Create Trip/ }))
   await userEvent.type(screen.getByLabelText('Trip name'), 'Japan 2027')
   await userEvent.type(screen.getByLabelText('Destination'), 'Tokyo{Enter}')
@@ -57,7 +57,7 @@ it('shows create errors and load errors', async () => {
     'GET /api/trips': () => json(500, { detail: 'Server unavailable' }),
     'POST /api/trips': () => json(400, { detail: 'End date is before start date' }),
   })
-  renderAt('/', routes)
+  renderAt('/trips', routes)
   expect(await screen.findByText('Server unavailable')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: /Start a new trip/ }))
   await userEvent.type(screen.getByLabelText('Trip name'), 'X')
@@ -77,7 +77,7 @@ it('deletes the account only with the password and signs out', async () => {
     'DELETE /api/me': (body) => ((body as { password: string }).password === 'right-password'
       ? new Response(null, { status: 204 }) : json(403, { detail: 'Password is incorrect' })),
   })
-  renderAt('/', routes)
+  renderAt('/trips', routes)
   await userEvent.click(await screen.findByRole('button', { name: 'Your account' }))
   const dialog = screen.getByRole('dialog', { name: 'Your account' })
   await userEvent.type(within(dialog).getByLabelText('Password'), 'wrong')
@@ -95,7 +95,7 @@ it('opens Create Trip already filled in when a city was picked on the landing pa
     'GET /api/trips': () => json(200, []),
     'GET /api/places/search': () => json(200, [{ name: 'Lisbon', address: 'Portugal', lat: 38.72, lng: -9.14, providerId: 'osm:R1' }]),
   })
-  renderAt('/?to=Lisbon', routes)
+  renderAt('/trips?to=Lisbon', routes)
   const dialog = await screen.findByRole('dialog', { name: 'Create a trip' })
   expect(within(dialog).getByLabelText('Trip name')).toHaveValue('Lisbon trip')
   expect(within(dialog).getByLabelText('Destination')).toHaveValue('Lisbon')
@@ -109,7 +109,7 @@ it('says when place search is down instead of showing no matches', async () => {
     'GET /api/trips': () => json(200, []),
     'GET /api/places/search': () => json(503, { detail: 'Place search is unavailable right now. Try again in a minute.' }),
   })
-  renderAt('/?to=Lisbon', routes)
+  renderAt('/trips?to=Lisbon', routes)
   const dialog = await screen.findByRole('dialog', { name: 'Create a trip' })
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('Place search is unavailable right now')
   expect(within(dialog).queryByText('Not finding it? It will be added as typed.')).not.toBeInTheDocument()
@@ -122,7 +122,7 @@ it('lets owners delete a trip and members leave one, after confirming', async ()
     'DELETE /api/trips/t1': () => new Response(null, { status: 204 }),
     'DELETE /api/trips/t2/members/u1': () => new Response(null, { status: 204 }),
   })
-  renderAt('/', routes)
+  renderAt('/trips', routes)
   await userEvent.click(await screen.findByRole('button', { name: 'Delete Japan 2027' }))
   const confirm = screen.getByRole('dialog', { name: 'Delete this trip?' })
   expect(confirm).toHaveTextContent('for you and the 2 other members')

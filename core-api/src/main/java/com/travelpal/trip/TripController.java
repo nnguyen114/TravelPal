@@ -2,6 +2,8 @@ package com.travelpal.trip;
 
 import com.travelpal.common.Auth;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -24,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/trips")
 public class TripController {
-    public record CityRequest(@NotBlank @Size(max = 120) String name, Double lat, Double lng,
+    public record CityRequest(@NotBlank @Size(max = 120) String name, @Min(-90) @Max(90) Double lat, @Min(-180) @Max(180) Double lng,
                               LocalDate startDate, LocalDate endDate, boolean locked) {
         TripService.CityInput input() { return new TripService.CityInput(name, lat, lng, startDate, endDate, locked); }
     }

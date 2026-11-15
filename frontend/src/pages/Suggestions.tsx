@@ -1,10 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { api } from '../api'
 import { Empty } from '../art'
 import { useAuth } from '../auth'
-import { Modal, PlaceSearch } from '../dialogs'
+import { Modal, PlaceSearch, useCreateProposal } from '../dialogs'
 import { PlusIcon } from '../icons'
 import { canEdit, dayDate, formatDay } from '../trip'
 import type { Destination, Place, Proposal, ProposalChange, Trip } from '../types'
@@ -135,17 +135,9 @@ function Detail({ trip, p, onStatus }: { trip: Trip; p: Proposal; onStatus: (s: 
 type Draft = { kind: 'ADD' | 'MOVE' | 'REMOVE'; place?: Place | null; name?: string; destinationId?: string; day: string }
 
 function NewProposalDialog({ trip, destinations, onClose }: { trip: Trip; destinations: Destination[]; onClose: () => void }) {
-  const navigate = useNavigate()
-  const qc = useQueryClient()
   const [drafts, setDrafts] = useState<Draft[]>([{ kind: 'ADD', day: '' }])
   const set = (i: number, patch: Partial<Draft>) => setDrafts(drafts.map((d, j) => (j === i ? { ...d, ...patch } : d)))
-  const create = useMutation({
-    mutationFn: (body: unknown) => api<Proposal>(`/api/trips/${trip.id}/proposals`, { method: 'POST', body }),
-    onSuccess: (p) => {
-      qc.invalidateQueries({ queryKey: ['proposals', trip.id] })
-      navigate(`/trips/${trip.id}/suggestions/${p.id}`)
-    },
-  })
+  const create = useCreateProposal(trip, onClose)
   const bias = trip.cities.find((c) => c.lat != null)
 
   function submit(e: FormEvent<HTMLFormElement>) {
@@ -209,12 +201,28 @@ function NewProposalDialog({ trip, destinations, onClose }: { trip: Trip; destin
   )
 }
 
-export function SuggestionsTab({ trip, destinations, proposals }: { trip: Trip; destinations: Destination[]; proposals: Proposal[] }) {
+const PAGE = 20
+
+/** Proposals in each status, for the tab badge and the filter buttons. */
+export function useProposalCounts(tripId: string | undefined) {
+  return useQuery({ queryKey: ['proposals', tripId, 'counts'], queryFn: () => api<Record<Status, number>>(`/api/trips/${tripId}/proposals/counts`) })
+}
+
+export function SuggestionsTab({ trip, destinations }: { trip: Trip; destinations: Destination[] }) {
   const { proposalId } = useParams()
   const navigate = useNavigate()
   const [filter, setFilter] = useState<Status>('OPEN')
   const [creating, setCreating] = useState(false)
-  const shown = proposals.filter((p) => p.status === filter)
+  const counts = useProposalCounts(trip.id)
+  // One status at a time, a page at a time, newest first; the cursor is the last proposal shown.
+  const list = useInfiniteQuery({
+    queryKey: ['proposals', trip.id, filter],
+    queryFn: ({ pageParam }) => api<Proposal[]>(`/api/trips/${trip.id}/proposals?status=${filter}&limit=${PAGE}`
+      + (pageParam ? `&before=${encodeURIComponent(pageParam.createdAt)}&beforeId=${pageParam.id}` : '')),
+    initialPageParam: null as Proposal | null,
+    getNextPageParam: (last) => (last.length < PAGE ? undefined : last[last.length - 1]),
+  })
+  const shown = list.data?.pages.flat() ?? []
   const selectedId = proposalId ?? shown[0]?.id
   const detail = useQuery({
     queryKey: ['proposal', selectedId],
@@ -228,11 +236,12 @@ export function SuggestionsTab({ trip, destinations, proposals }: { trip: Trip; 
         <div className="segmented" role="group" aria-label="Filter proposals">
           {STATUS.map(([s, label]) => (
             <button key={s} aria-pressed={filter === s} onClick={() => { setFilter(s); navigate(`/trips/${trip.id}/suggestions`) }}>
-              {label} · {proposals.filter((p) => p.status === s).length}
+              {label} · {counts.data?.[s] ?? 0}
             </button>
           ))}
         </div>
-        {shown.length === 0 && (
+        {list.error && <div role="alert" className="error">{list.error.message}</div>}
+        {list.isSuccess && shown.length === 0 && (
           <Empty title={`No ${filter.toLowerCase()} proposals.`}>
             {filter === 'OPEN' ? 'When someone suggests a change to the plan, it shows up here for everyone to weigh in.' : 'Nothing here yet.'}
           </Empty>
@@ -247,6 +256,11 @@ export function SuggestionsTab({ trip, destinations, proposals }: { trip: Trip; 
             </span>
           </button>
         ))}
+        {list.hasNextPage && (
+          <button className="btn btn-ghost" disabled={list.isFetchingNextPage} onClick={() => list.fetchNextPage()}>
+            {list.isFetchingNextPage ? 'Loading…' : 'Show older'}
+          </button>
+        )}
         <button className="btn" onClick={() => setCreating(true)}><PlusIcon /> New proposal</button>
         <p className="muted" style={{ fontSize: 13, margin: 0 }}>Proposals are optional. Anyone can still add directly or save an idea.</p>
       </section>

@@ -9,9 +9,14 @@ import com.travelpal.optimize.TripSnapshot;
 import com.travelpal.trip.TripAccess;
 import com.travelpal.trip.TripRole;
 import com.travelpal.trip.TripService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -19,6 +24,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Limit;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,13 +42,19 @@ public class ProposalService {
     public enum Kind { ADD, MOVE, REMOVE }
 
     /** One change. MOVE/REMOVE remember the place's version so a stale proposal can't overwrite newer edits. */
-    public record Change(Kind kind, UUID destinationId, Long destinationVersion, String name, String address, Double lat, Double lng,
-                         String providerId, Integer dayIndex, LocalTime startTime, Integer durationMin) {}
+    /** Field limits match a direct add, so a merged proposal can't store what Add Destination would reject. */
+    public record Change(Kind kind, UUID destinationId, Long destinationVersion, @Size(max = 200) String name,
+                         @Size(max = 300) String address, @Min(-90) @Max(90) Double lat, @Min(-180) @Max(180) Double lng,
+                         @Size(max = 300) String providerId, Integer dayIndex, LocalTime startTime,
+                         @Min(5) @Max(1440) Integer durationMin) {}
 
     public record View(Proposal proposal, List<Change> changes, List<ProposalComment> comments, long commentCount, boolean stale,
                        Map<UUID, Destination> places, Map<UUID, String> names) {}
 
     static final int MAX_CHANGES = 20;
+    // Cursor start: after every real row (Postgres can't store Instant.MAX).
+    private static final Instant NEWEST = Instant.parse("9999-12-31T00:00:00Z");
+    private static final UUID MAX_ID = new UUID(-1L, -1L);
     private static final TypeReference<List<Change>> CHANGES = new TypeReference<>() {};
 
     private final ProposalRepository proposals;
@@ -111,9 +123,11 @@ public class ProposalService {
     }
 
     @Transactional(readOnly = true)
-    public List<View> list(UUID userId, UUID tripId) {
+    public List<View> list(UUID userId, UUID tripId, Proposal.Status status, Instant before, UUID beforeId, int limit) {
         access.require(tripId, userId, TripRole.VIEWER);
-        List<Proposal> all = proposals.findByTripIdOrderByCreatedAtDesc(tripId);
+        List<Proposal> all = before == null
+            ? proposals.page(tripId, status, NEWEST, MAX_ID, Limit.of(limit))
+            : proposals.page(tripId, status, before, beforeId == null ? MAX_ID : beforeId, Limit.of(limit));
         Map<UUID, Long> counts = all.isEmpty() ? Map.of() : comments.countByProposal(all.stream().map(Proposal::getId).toList())
             .stream().collect(Collectors.toMap(r -> (UUID) r[0], r -> (Long) r[1]));
         Map<UUID, Destination> places = places(userId, tripId);
@@ -122,6 +136,16 @@ public class ProposalService {
             List<Change> changes = changes(p);
             return new View(p, changes, null, counts.getOrDefault(p.getId(), 0L), stale(p, changes, places), places, names);
         }).toList();
+    }
+
+    /** How many proposals the trip has in each status, for the tab badge and filter counts. */
+    @Transactional(readOnly = true)
+    public Map<Proposal.Status, Long> counts(UUID userId, UUID tripId) {
+        access.require(tripId, userId, TripRole.VIEWER);
+        Map<Proposal.Status, Long> out = new EnumMap<>(Proposal.Status.class);
+        for (Proposal.Status s : Proposal.Status.values()) out.put(s, 0L);
+        for (Object[] r : proposals.countByStatus(tripId)) out.put((Proposal.Status) r[0], (Long) r[1]);
+        return out;
     }
 
     @Transactional(readOnly = true)

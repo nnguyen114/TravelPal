@@ -12,6 +12,14 @@ type Proposal =
   | { type: 'discover'; query: string; day_number: number }
 type Msg = { role: 'user' | 'assistant'; content: string; proposals: Proposal[] }
 
+/** The API takes the last 40 messages; a long chat sends its most recent ones, starting with something the traveler said. */
+const MAX_MESSAGES = 40
+export function recent(history: Msg[]) {
+  let last = history.slice(-MAX_MESSAGES)
+  while (last.length && last[0].role !== 'user') last = last.slice(1)
+  return last.map(({ role, content }) => ({ role, content: content || '…' }))
+}
+
 const SUGGESTED = ['How full is Day 1?', 'Here are some places: …', 'Make Day 2 lighter']
 
 function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 'places' }> }) {
@@ -115,7 +123,7 @@ export function AssistantDrawer({ trip, onClose, onDiscover }: {
         if (name === 'text') patch((m) => ({ ...m, content: m.content + JSON.parse(data).text }))
         if (name === 'proposal') patch((m) => ({ ...m, proposals: [...m.proposals, JSON.parse(data)] }))
         if (name === 'error') setError(JSON.parse(data).message)
-      }, ctrl.current.signal, { messages: history.map(({ role, content }) => ({ role, content: content || '…' })) })
+      }, ctrl.current.signal, { messages: recent(history) })
     } catch (e) {
       if (!ctrl.current.signal.aborted) setError((e as Error).message)
     } finally {

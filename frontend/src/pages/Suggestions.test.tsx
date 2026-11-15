@@ -31,7 +31,8 @@ function setup(role: 'OWNER' | 'VIEWER' = 'OWNER', detail = prop()) {
   return mockApi({
     'GET /api/trips/t1': () => json(200, trip({ role })),
     'GET /api/trips/t1/destinations': () => json(200, [dest('Senso-ji', 2, 0), dest('Golden Gai', null, null)]),
-    'GET /api/trips/t1/proposals': () => json(200, list),
+    'GET /api/trips/t1/proposals': (_, url) => json(200, list.filter((p) => url.includes(`status=${p.status}`))),
+    'GET /api/trips/t1/proposals/counts': () => json(200, { OPEN: 1, MERGED: 1, CLOSED: 0 }),
     'GET /api/trips/t1/proposals/p1': () => json(200, detail),
     'GET /api/trips/t1/proposals/p2': () => json(200, prop({ id: 'p2', title: 'Swap days', status: 'MERGED' })),
     'POST /api/trips/t1/proposals/p1/impact': () => json(200, prop({
@@ -109,6 +110,7 @@ it('creates a multi-change proposal', async () => {
       { kind: 'REMOVE', destinationId: 'Golden Gai', dayIndex: null },
     ],
   }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
 })
 
 it('Add Destination can propose instead of adding directly', async () => {

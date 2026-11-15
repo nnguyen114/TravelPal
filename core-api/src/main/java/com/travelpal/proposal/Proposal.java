@@ -5,6 +5,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Entity
@@ -36,7 +37,8 @@ public class Proposal {
         this.description = description;
         this.changes = changes;
         this.status = Status.OPEN;
-        this.createdAt = Instant.now();
+        // Postgres keeps microseconds; trimming here keeps the paging cursor identical before and after a reload.
+        this.createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
     }
 
     void settle(Status status, UUID by) {
