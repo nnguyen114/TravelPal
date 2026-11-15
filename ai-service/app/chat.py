@@ -7,8 +7,8 @@ as buttons; the traveler decides. `check_fit` is answered here from the trip dat
 import json
 import logging
 import os
-from datetime import date, timedelta
 from collections.abc import AsyncIterator
+from datetime import date, timedelta
 from typing import Literal
 
 import anthropic
