@@ -125,14 +125,3 @@ it('paste a link to pick a place in Add Destination', async () => {
   await waitFor(() => expect(calls.find((c) => c.method === 'POST' && c.url.endsWith('/destinations'))?.body)
     .toMatchObject({ name: 'Koffee Mameya Kakeru', lat: 35.68, providerId: 'osm:N9' }))
 })
-
-it('the assistant can open suggestions', async () => {
-  const sse = 'event: proposal\ndata: {"type":"discover","query":"quiet bars","day_number":1}\n\nevent: done\ndata: {}\n\n'
-  const calls = setup({ 'POST /api/trips/t1/assistant': () => new Response(sse, { status: 200 }) })
-  renderAt('/trips/t1', routes)
-  await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
-  await userEvent.type(screen.getByLabelText('Message the assistant'), 'any quiet bars?{Enter}')
-  await userEvent.click(await screen.findByRole('button', { name: 'Show suggestions: quiet bars' }))
-  expect(await screen.findByText('Near Day 1')).toBeInTheDocument()
-  await waitFor(() => expect(calls.find((c) => c.url.endsWith('/discover'))?.body).toEqual({ query: 'quiet bars', dayIndex: 0, likeDestinationId: null }))
-})

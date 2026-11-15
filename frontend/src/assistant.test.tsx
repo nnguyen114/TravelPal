@@ -28,28 +28,53 @@ function setup(stream: () => Response, role: 'OWNER' | 'VIEWER' = 'OWNER') {
     'GET /api/places/search': (_, url) => json(200, url.includes('Tsukiji')
       ? [{ name: 'Tsukiji Outer Market', address: 'Chuo, Tokyo', lat: 35.66, lng: 139.77, providerId: 'osm:N1' }]
       : url.includes('Tiny') ? [{ name: 'Tiny Bar', address: 'Paris', lat: 48.86, lng: 2.35, providerId: 'osm:N2' }] : []),
-    'POST /api/trips/t1/destinations': (b) => ((b as { name: string }).name === 'Dup' ? json(409, { detail: 'dup' }) : json(201, b)),
+    'POST /api/trips/t1/destinations': (b) => ((b as { name: string }).name === 'Dup'
+      ? json(409, { detail: 'dup' }) : json(201, { id: `d-${(b as { name: string }).name}`, ...(b as object) })),
+    'DELETE /api/trips/t1/destinations/d-Tsukiji Outer Market': () => new Response(null, { status: 204 }),
+    'DELETE /api/trips/t1/destinations/d-Tiny bar': () => new Response(null, { status: 204 }),
+    'DELETE /api/trips/t1/destinations/d-Ben Thanh Market': () => new Response(null, { status: 204 }),
     'POST /api/trips/t1/optimize': () => json(202, { id: 'p9', status: 'PENDING' }),
   })
 }
 
-it('streams an answer and adds proposed places after confirmation', async () => {
-  const calls = setup(() => sse(['text', { text: 'Here are ' }], ['text', { text: 'the places.' }],
-    ['proposal', { type: 'places', places: [{ name: 'Tsukiji', day_number: 2 }, { name: 'Tiny bar', day_number: 0 }, { name: 'Dup', day_number: 0 }] }],
-    ['done', {}]))
+it('adds the places it picks straight away, with Undo', async () => {
+  const calls = setup(() => sse(['status', { text: 'Finding markets in Ho Chi Minh City…' }],
+    ['proposal', { type: 'places', places: [
+      // From the assistant's own map search: added at that location, no second lookup.
+      { name: 'Ben Thanh Market', day_number: 1, lat: 10.772, lng: 106.698, providerId: 'g:b', address: 'District 1' },
+      { name: 'Tsukiji', day_number: 2 }, { name: 'Tiny bar', day_number: 0 }, { name: 'Dup', day_number: 0 }] }],
+    ['text', { text: 'Added 3 places. Optimize Trip will order the days.' }], ['done', {}]))
   renderAt('/trips/t1', routes)
   await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
-  await userEvent.type(screen.getByLabelText('Message the assistant'), 'Tsukiji, Tiny bar{Enter}')
-  expect(await screen.findByText('Here are the places.')).toBeInTheDocument()
-  expect(screen.getByText('Tsukiji, Tiny bar')).toBeInTheDocument()
+  await userEvent.type(screen.getByLabelText('Message the assistant'), 'Plan my days{Enter}')
+  expect(await screen.findByText('Added 3 places. Optimize Trip will order the days.')).toBeInTheDocument()
   const sent = calls.find((c) => c.url.endsWith('/assistant'))!.body as { messages: { role: string; content: string }[] }
-  expect(sent.messages).toEqual([{ role: 'user', content: 'Tsukiji, Tiny bar' }])
+  expect(sent.messages).toEqual([{ role: 'user', content: 'Plan my days' }])
 
-  await userEvent.click(screen.getByRole('button', { name: 'Add 3 places' }))
-  expect(await screen.findByRole('status')).toHaveTextContent('Added 2 of 3. 2 without a map location yet. 1 already in the trip')
+  // No button to press: they're added as soon as they arrive.
+  expect(await screen.findByText(/Added 3 to Destinations · 2 on days · 1 not on the map yet · 1 already in the trip/)).toBeInTheDocument()
   const posts = calls.filter((c) => c.method === 'POST' && c.url.endsWith('/destinations')).map((c) => c.body)
-  expect(posts[0]).toMatchObject({ name: 'Tsukiji Outer Market', lat: 35.66, dayIndex: 1, providerId: 'osm:N1' })
-  expect(posts[1]).toMatchObject({ name: 'Tiny bar', lat: null, dayIndex: null })
+  expect(posts[0]).toMatchObject({ name: 'Ben Thanh Market', lat: 10.772, dayIndex: 0, providerId: 'g:b' })
+  expect(posts[1]).toMatchObject({ name: 'Tsukiji Outer Market', lat: 35.66, dayIndex: 1, providerId: 'osm:N1' })
+  expect(posts[2]).toMatchObject({ name: 'Tiny bar', lat: null, dayIndex: null }) // its only match is in Paris
+  expect(calls.filter((c) => c.url.includes('/places/search')).map((c) => c.url)).not.toContainEqual(expect.stringContaining('Ben'))
+  expect(screen.getByRole('link', { name: 'View' })).toHaveAttribute('href', '/trips/t1/destinations')
+
+  await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
+  await waitFor(() => expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url.split('/').pop())).toEqual(
+    ['d-Ben Thanh Market', 'd-Tsukiji Outer Market', 'd-Tiny bar']))
+  expect(await screen.findByText('Removed.')).toBeInTheDocument()
+})
+
+it('shows what it is doing while it searches', async () => {
+  // A stream still open mid-search: the status shows in the reply bubble until the answer arrives.
+  setup(() => new Response(new ReadableStream({
+    start: (c) => c.enqueue(new TextEncoder().encode('event: status\ndata: {"text":"Finding food in Hue…"}\n\n')),
+  }), { status: 200 }))
+  renderAt('/trips/t1', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
+  await userEvent.type(screen.getByLabelText('Message the assistant'), 'food in Hue{Enter}')
+  expect(await screen.findByText('Finding food in Hue…')).toBeInTheDocument()
 })
 
 it('turns an optimize proposal into a preview run', async () => {
