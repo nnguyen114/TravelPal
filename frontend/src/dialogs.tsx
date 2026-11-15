@@ -1,10 +1,36 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { api } from './api'
 import { CloseIcon } from './icons'
 import { dayDate, formatDay, toInput } from './trip'
 import type { Destination, DestinationInput, Flexibility, LinkResult, Place, Proposal, Trip } from './types'
+
+/** A password field with a Show/Hide button (GOV.UK pattern). It hides again on submit, so the browser never
+ * offers to remember it as plain text. The button sits outside the label so the field's name stays "Password". */
+export function PasswordInput({ label = 'Password', ...input }: { label?: string } & InputHTMLAttributes<HTMLInputElement>) {
+  const id = useId()
+  const ref = useRef<HTMLInputElement>(null)
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    const form = ref.current?.form
+    const hide = () => setShown(false)
+    form?.addEventListener('submit', hide)
+    return () => form?.removeEventListener('submit', hide)
+  }, [])
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <div className="pw-field">
+        <input {...input} ref={ref} id={id} type={shown ? 'text' : 'password'} autoCapitalize="none" spellCheck={false} />
+        <button type="button" className="pw-toggle" aria-controls={id} aria-label={shown ? 'Hide password' : 'Show password'}
+          onClick={() => setShown((s) => !s)}>
+          {shown ? 'Hide' : 'Show'}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null)
@@ -189,14 +215,24 @@ function useSaveDestination(trip: Trip, id: string | null, onDone: () => void) {
   })
 }
 
+/** Create a proposal, then close the form and open the proposal so the group can discuss it. */
+export function useCreateProposal(trip: Trip, onClose: () => void) {
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: unknown) => api<Proposal>(`/api/trips/${trip.id}/proposals`, { method: 'POST', body }),
+    onSuccess: (p) => {
+      qc.invalidateQueries({ queryKey: ['proposals', trip.id] })
+      onClose()
+      navigate(`/trips/${trip.id}/suggestions/${p.id}`)
+    },
+  })
+}
+
 export function AddDestinationDialog({ trip, day, onClose }: { trip: Trip; day: number | null; onClose: () => void }) {
   const [place, setPlace] = useState<{ p: Place | null; text: string }>({ p: null, text: '' })
   const save = useSaveDestination(trip, null, onClose)
-  const navigate = useNavigate()
-  const propose = useMutation({
-    mutationFn: (body: unknown) => api<Proposal>(`/api/trips/${trip.id}/proposals`, { method: 'POST', body }),
-    onSuccess: (p) => navigate(`/trips/${trip.id}/suggestions/${p.id}`),
-  })
+  const propose = useCreateProposal(trip, onClose)
   const proposeIt = (form: HTMLFormElement) => {
     if (!form.reportValidity()) return
     const f = new FormData(form)

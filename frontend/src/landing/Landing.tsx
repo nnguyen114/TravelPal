@@ -31,8 +31,10 @@ const Arrow = () => <span className="arrow" aria-hidden="true">→</span>
 
 const YEAR = new Date().getFullYear()
 
-export function Landing() {
+export function Landing({ signedIn = false }: { signedIn?: boolean }) {
   useReveal()
+  // Signed in, "Plan a trip" opens Create Trip on My Trips instead of sign-up.
+  const start = signedIn ? '/trips?to=' : '/signup'
   return (
     <div className="landing">
       <header className="lp-nav">
@@ -43,8 +45,8 @@ export function Landing() {
           <a href="#faq">FAQ</a>
         </nav>
         <div className="row">
-          <Link to="/login" className="btn btn-ghost">Log in</Link>
-          <Link to="/signup" className="btn btn-primary lp-btn">Plan a trip</Link>
+          {signedIn ? <Link to="/trips" className="btn btn-ghost">My Trips</Link> : <Link to="/login" className="btn btn-ghost">Log in</Link>}
+          <Link to={start} className="btn btn-primary lp-btn">Plan a trip</Link>
         </div>
       </header>
 
@@ -56,7 +58,7 @@ export function Landing() {
             </h1>
             <p data-reveal style={delay(0.1)}>Paste everyone's places. Get days that actually work.</p>
             <div className="lp-actions" data-reveal style={delay(0.2)}>
-              <Link to="/signup" className="btn btn-primary lp-btn lp-big">Plan a trip <Arrow /></Link>
+              <Link to={start} className="btn btn-primary lp-btn lp-big">Plan a trip <Arrow /></Link>
               <a href="#demo" className="btn lp-btn lp-big lp-secondary"><span className="lp-play" aria-hidden="true">▶</span> See how it works</a>
             </div>
           </div>
@@ -152,7 +154,7 @@ export function Landing() {
           <div className="lp-final-copy">
             <h2>Where are you headed next?</h2>
             <p>Start with one city and a handful of places. Add the rest whenever.</p>
-            <Link to="/signup" className="btn lp-btn lp-big lp-light">Plan a trip <Arrow /></Link>
+            <Link to={start} className="btn lp-btn lp-big lp-light">Plan a trip <Arrow /></Link>
           </div>
         </section>
       </main>
@@ -164,7 +166,7 @@ export function Landing() {
         </div>
         <nav aria-label="Footer">
           <div><h4>Product</h4><a href="#demo">How it works</a><a href="#features">Features</a><a href="#faq">FAQ</a></div>
-          <div><h4>Account</h4><Link to="/login">Log in</Link><Link to="/signup">Create an account</Link></div>
+          <div><h4>Account</h4>{signedIn ? <Link to="/trips">My Trips</Link> : <><Link to="/login">Log in</Link><Link to="/signup">Create an account</Link></>}</div>
         </nav>
         <small>© {YEAR} TravelPal</small>
       </footer>

@@ -44,6 +44,8 @@ const CHAPTERS = [
   { label: 'Find more like it', start: 24 },
 ]
 const LENGTH = 32
+// The script is written in comfortable seconds; it plays faster so the whole loop is ~20 s and each chapter ~5 s.
+const SPEED = 1.6
 
 const clamp = (v: number) => Math.min(1, Math.max(0, v))
 const prog = (t: number, a: number, b: number) => clamp((t - a) / (b - a))
@@ -73,7 +75,7 @@ export function Demo() {
     if (!playing || !visible) return
     let last = performance.now()
     let frame = requestAnimationFrame(function tick(now) {
-      if (!document.hidden) setT((v) => (v + (now - last) / 1000) % LENGTH)
+      if (!document.hidden) setT((v) => (v + ((now - last) / 1000) * SPEED) % LENGTH)
       last = now
       frame = requestAnimationFrame(tick)
     })

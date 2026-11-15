@@ -142,7 +142,8 @@ export function OptimizePage() {
   const t = trip.data
   const error = preview.error ?? trip.error ?? apply.error ?? discard.error ?? rerun.error
   const again = (patch: { mode?: Preview['request']['mode']; instructions?: string | null }) =>
-    p && rerun.mutate({ mode: p.request.mode, scope: p.request.scope === 'DAY' ? 'DAY' : 'TRIP', dayIndex: p.request.dayIndex, instructions: p.request.instructions, ...patch })
+    p && rerun.mutate({ mode: p.request.mode, scope: p.request.scope, dayIndex: p.request.dayIndex, destinationIds: p.request.destinationIds,
+      instructions: p.request.instructions, ...patch })
   const slow = p?.status === 'PENDING' && Date.now() - new Date(p.createdAt).getTime() > 60_000
 
   return (

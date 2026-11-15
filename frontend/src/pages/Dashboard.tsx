@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { api } from '../api'
 import { useAuth } from '../auth'
-import { CreateTripDialog, Modal } from '../dialogs'
+import { CreateTripDialog, Modal, PasswordInput } from '../dialogs'
 import { LeaveIcon, Logo, PlusIcon, TrashIcon } from '../icons'
 import { TripCover } from '../art'
 import { countdown, formatRange } from '../trip'
@@ -34,9 +34,7 @@ function AccountDialog({ onClose }: { onClose: () => void }) {
           This removes your account, your saved places and your "not interested" list. Trips you share go to another
           member; trips only you are in are deleted. This can't be undone.
         </p>
-        <label className="field">Password
-          <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-        </label>
+        <PasswordInput autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         {error && <div role="alert" className="error">{error}</div>}
         <button className="btn btn-danger" type="submit">Delete my account</button>
       </form>
@@ -141,10 +139,10 @@ export function Dashboard() {
   // A city picked on the landing page arrives as ?to=City (through sign-up): open Create Trip with it filled in.
   const [params] = useSearchParams()
   const [destination] = useState(() => params.get('to')?.trim().slice(0, 120) ?? '')
-  const [creating, setCreating] = useState(!!destination)
+  const [creating, setCreating] = useState(params.has('to'))
   const [removing, setRemoving] = useState<TripSummary | null>(null)
   useEffect(() => {
-    if (params.has('to')) navigate('/', { replace: true })
+    if (params.has('to')) navigate('/trips', { replace: true })
   }, [params, navigate])
   const trips = useQuery({ queryKey: ['trips'], queryFn: () => api<TripSummary[]>('/api/trips') })
   const [today] = useState(() => new Date())

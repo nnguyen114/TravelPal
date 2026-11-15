@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeSet;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/trips/{tripId}/proposals")
 public class ProposalController {
     public record CreateRequest(@NotBlank @Size(max = 140) String title, @Size(max = 4000) String description,
-                                @NotNull @Size(min = 1, max = ProposalService.MAX_CHANGES) List<ProposalService.Change> changes) {}
+                                @NotNull @Size(min = 1, max = ProposalService.MAX_CHANGES) List<ProposalService.@Valid Change> changes) {}
     public record CommentRequest(@NotBlank @Size(max = 2000) String body) {}
 
     public record ChangeDto(ProposalService.Kind kind, UUID destinationId, String name, Integer fromDay, Integer dayIndex, LocalTime startTime) {}
@@ -43,9 +45,18 @@ public class ProposalController {
         this.service = service;
     }
 
+    /** Newest first, a page at a time: pass the last item's createdAt and id as before/beforeId for the next page. */
     @GetMapping
-    List<ProposalDto> list(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId) {
-        return service.list(Auth.userId(jwt), tripId).stream().map(ProposalController::dto).toList();
+    List<ProposalDto> list(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId,
+                           @RequestParam(required = false) Proposal.Status status, @RequestParam(required = false) Instant before,
+                           @RequestParam(required = false) UUID beforeId, @RequestParam(defaultValue = "20") int limit) {
+        return service.list(Auth.userId(jwt), tripId, status, before, beforeId, Math.clamp(limit, 1, 50)).stream()
+            .map(ProposalController::dto).toList();
+    }
+
+    @GetMapping("/counts")
+    Map<Proposal.Status, Long> counts(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId) {
+        return service.counts(Auth.userId(jwt), tripId);
     }
 
     @PostMapping

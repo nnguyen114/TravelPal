@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router'
 import { api } from './api'
 import type { Mode, Preview } from './types'
 
-type OptimizeInput = { mode: Mode; scope: 'TRIP' | 'DAY'; dayIndex?: number | null; instructions?: string | null }
+type OptimizeInput = {
+  mode: Mode; scope: 'TRIP' | 'DAY' | 'SELECTION'; dayIndex?: number | null; destinationIds?: string[]; instructions?: string | null
+}
 
 /** Starts an optimizer run and opens its preview. Nothing changes until the preview is applied. */
 export function useOptimize(tripId: string, replace = false) {

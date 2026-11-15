@@ -3,7 +3,8 @@ on:
   push: { branches: [main, develop] }
   pull_request:
   schedule: [{ cron: "0 6 * * 1" }]
-permissions: { contents: read, security-events: write }
+# Least privilege: gitleaks lists a PR's commits (pull-requests: read); CodeQL reads its own run (actions: read).
+permissions: { contents: read, security-events: write, pull-requests: read, actions: read }
 jobs:
   gitleaks:
     runs-on: ubuntu-latest

@@ -107,3 +107,31 @@ def chat_dep():
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+def test_context_maps_days_to_dates_weekdays_and_cities():
+    trip = {"trip": {"name": "Japan", "dayCount": 3, "startDate": "2027-06-10",
+                     "cities": [{"name": "Tokyo", "startDate": "2027-06-10", "endDate": "2027-06-11"},
+                                {"name": "Kyoto", "startDate": "2027-06-12", "endDate": "2027-06-12"}]},
+            "destinations": []}
+    ctx = json.loads(chat.trip_context(trip))
+    assert ctx["trip"]["days"] == [
+        {"day": 1, "date": "2027-06-10", "weekday": "Thursday", "city": "Tokyo"},
+        {"day": 2, "date": "2027-06-11", "weekday": "Friday", "city": "Tokyo"},
+        {"day": 3, "date": "2027-06-12", "weekday": "Saturday", "city": "Kyoto"},
+    ]
+    assert ctx["today"] and "dayCount" not in ctx["trip"]
+
+
+def test_tools_reject_days_past_the_trip_and_skip_duplicates():
+    for name, args in [("propose_places", {"places": [{"name": "X", "day_number": 3}]}),
+                       ("propose_optimization", {"mode": "RELAXED", "day_number": 3, "instructions": ""}),
+                       ("find_places", {"query": "bars", "day_number": 3})]:
+        with pytest.raises(ValueError, match="trip has 2 days"):
+            chat.run_tool(TRIP, name, args)
+    text_, proposal = chat.run_tool(TRIP, "propose_places", {"places": [
+        {"name": "meiji jingu ", "day_number": 1}, {"name": "Tsukiji", "day_number": 2}, {"name": "TSUKIJI", "day_number": 0}]})
+    assert proposal == {"type": "places", "places": [{"name": "Tsukiji", "day_number": 2}]}
+    assert "meiji jingu" in text_ and "TSUKIJI" in text_
+    text_, proposal = chat.run_tool(TRIP, "propose_places", {"places": [{"name": "Cat Street", "day_number": 1}]})
+    assert proposal is None and text_.startswith("Nothing to add")

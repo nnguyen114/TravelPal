@@ -129,13 +129,15 @@ public class OptimizeService {
         return find(tripId, previewId);
     }
 
-    /** The knobs the preview was made with (mode, scope, day, instructions), without the trip snapshot. */
+    /** The knobs the preview was made with (mode, scope, day, places, instructions), without the trip snapshot. */
     public String params(OptimizationPreview p) {
         JsonNode r = json.readTree(p.getRequest());
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("mode", r.path("mode").asString());
         m.put("scope", r.path("scope").asString());
         m.put("dayIndex", r.path("dayIndex").isNull() ? null : r.path("dayIndex").asInt());
+        // A selection re-run needs the same places; older previews have none, which reads as an empty list.
+        m.put("destinationIds", r.path("destinationIds").valueStream().map(JsonNode::asString).toList());
         m.put("instructions", r.path("instructions").isNull() ? null : r.path("instructions").asString());
         return json.writeValueAsString(m);
     }
