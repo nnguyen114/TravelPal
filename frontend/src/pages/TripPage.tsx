@@ -2,17 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link, useParams } from 'react-router'
 import { api } from '../api'
+import { useAuth } from '../auth'
 import { AddDestinationDialog, EditDestinationDialog, InviteDialog } from '../dialogs'
-import { LinkIcon, LockIcon, Logo, PlusIcon } from '../icons'
+import { LinkIcon, LockIcon, Logo, PlusIcon, SparkleIcon } from '../icons'
 import { useTripLive } from '../live'
 import { Empty } from '../art'
 import { AskAiButton, AssistantDrawer } from '../assistant'
 import { PaceSwitch, useOptimize } from '../optimize'
-import { SparkleIcon } from '../icons'
 import { bestTime, byDay, canEdit, cityForDay, countdown, dayColor, dayDate, formatDay, formatDuration, formatRange, freeTime, toInput } from '../trip'
 import { DiscoverSheet, type DiscoverAsk } from '../discover'
-import type { Destination, Mode, Proposal, Trip } from '../types'
-import { SuggestionsTab } from './Suggestions'
+import type { Destination, Mode, Trip } from '../types'
+import { SuggestionsTab, useProposalCounts } from './Suggestions'
 import { ActivityTab, MembersTab } from './CollabTabs'
 
 type Tab = 'main' | 'destinations' | 'suggestions' | 'members' | 'activity'
@@ -24,17 +24,18 @@ const AVATAR_BG = ['#FFD9A8', '#BFE6E1', '#D9D4FB', '#FDE7DF']
 
 function TripHeader({ trip, tab, openProposals }: { trip: Trip; tab: Tab; openProposals: number }) {
   const shown = trip.members.slice(0, 3)
+  const { user } = useAuth()
   const [inviting, setInviting] = useState(false)
   const [today] = useState(() => new Date())
   return (
-    <header className="topbar">
+    <header className="topbar trip-head">
       <div className="topbar-inner" style={{ paddingBottom: 0, flexDirection: 'column', alignItems: 'stretch' }}>
         <div className="spread">
           <div className="row" style={{ gap: 14 }}>
-            <Link to="/" aria-label="My Trips"><Logo /></Link>
+            <Link to="/" aria-label="TravelPal home"><Logo /></Link>
             <div>
               <nav aria-label="Breadcrumb" style={{ fontSize: 13 }} className="muted">
-                <Link to="/" style={{ textDecoration: 'none' }}>My Trips</Link> <span aria-hidden="true">›</span> {trip.name}
+                <Link to="/trips" style={{ textDecoration: 'none' }}>My Trips</Link> <span aria-hidden="true">›</span> {trip.name}
               </nav>
               <h1 style={{ marginTop: 2, fontSize: 24, fontWeight: 800 }}>{trip.name}</h1>
             </div>
@@ -54,6 +55,10 @@ function TripHeader({ trip, tab, openProposals }: { trip: Trip; tab: Tab; openPr
               {trip.members.length > 3 && <span className="avatar" style={{ background: 'var(--soft)', marginLeft: -8 }}>+{trip.members.length - 3}</span>}
             </div>
             {canEdit(trip) && <button className="btn" onClick={() => setInviting(true)}><LinkIcon /> Invite</button>}
+            <Link to="/trips" className="me-link" title="My Trips">
+              <span className="avatar" aria-hidden="true">{user?.displayName.slice(0, 1).toUpperCase()}</span>
+              <span>{user?.displayName}</span>
+            </Link>
           </div>
         </div>
         <nav aria-label="Trip sections" className="tabs">
@@ -70,6 +75,33 @@ function TripHeader({ trip, tab, openProposals }: { trip: Trip; tab: Tab; openPr
       {inviting && <InviteDialog trip={trip} onClose={() => setInviting(false)} />}
     </header>
   )
+}
+
+/**
+ * How much of the top of the screen the sticky trip header (and, on narrow screens, the sticky map) covers, kept in
+ * --trip-head / --trip-stack so the map sits under the header and a picked day scrolls into view below both.
+ */
+function useStickyStack(mapPanel: { current: HTMLElement | null }) {
+  const [stack, setStack] = useState(0)
+  useEffect(() => {
+    const head = document.querySelector<HTMLElement>('.trip-head')
+    const root = document.documentElement.style
+    const covered = (el: HTMLElement | null) => (el && getComputedStyle(el).position === 'sticky' ? el.offsetHeight : 0)
+    const update = () => {
+      const h = covered(head)
+      // The map only covers the itinerary when it spans the page above it (narrow screens); beside it, it doesn't.
+      const m = mapPanel.current && mapPanel.current.offsetWidth > window.innerWidth / 2 ? covered(mapPanel.current) : 0
+      root.setProperty('--trip-head', `${h}px`)
+      root.setProperty('--trip-stack', `${h + m}px`)
+      setStack(h + m)
+    }
+    update()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(update)
+    for (const el of [head, mapPanel.current, document.body]) if (el) ro.observe(el)
+    return () => ro.disconnect()
+  }, [mapPanel])
+  return stack
 }
 
 function useReorder(trip: Trip) {
@@ -222,6 +254,8 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
   const [editing, setEditing] = useState<Destination | null>(null)
   const [discover, setDiscover] = useState<DiscoverAsk | null>(null)
   const list = useRef<HTMLElement>(null)
+  const mapPanel = useRef<HTMLElement>(null)
+  const stack = useStickyStack(mapPanel)
   // After someone picks a day, the scroll that brings it into view mustn't hand the map to its neighbour.
   const pickedAt = useRef(0)
 
@@ -231,10 +265,10 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
     const io = new IntersectionObserver((entries) => {
       const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]
       if (top && performance.now() - pickedAt.current > 1200) setActiveDay(Number((top.target as HTMLElement).dataset.day))
-    }, { rootMargin: '-10% 0px -60% 0px' })
+    }, { rootMargin: `-${stack + 8}px 0px -55% 0px` })
     list.current?.querySelectorAll('[data-day]').forEach((el) => io.observe(el))
     return () => io.disconnect()
-  }, [days.length])
+  }, [days.length, stack])
 
   /** Show a day on the map and bring it into view in the itinerary. */
   function pickDay(day: number | null) {
@@ -288,7 +322,7 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
         )}
       </section>
 
-      <section aria-label="Map" className="card map-panel">
+      <section ref={mapPanel} aria-label="Map" className="card map-panel">
         <DayPicker trip={trip} days={days} active={activeDay} onPick={pickDay} />
         <div className="map-box">
           <Suspense fallback={null}>
@@ -325,6 +359,9 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
       api(`/api/trips/${trip.id}/destinations/${d.id}`, { method: 'PUT', body: toInput(d, { dayIndex: day }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['destinations', trip.id] }),
   })
+  const [mode, setMode] = useState<Mode>('BALANCED')
+  const optimize = useOptimize(trip.id)
+  const ideas = destinations.filter((d) => d.dayIndex === null)
   const shown = destinations.filter((d) => filter === 'all' || (filter === 'scheduled') === (d.dayIndex !== null))
   const count = (f: Filter) => destinations.filter((d) => f === 'all' || (f === 'scheduled') === (d.dayIndex !== null)).length
 
@@ -343,17 +380,40 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
           {canEdit(trip) && <button className="btn" onClick={() => setAdding(true)}><PlusIcon /> Add Destination</button>}
         </div>
       </div>
-      {schedule.error && <div role="alert" className="error" style={{ marginTop: 16 }}>{schedule.error.message}</div>}
+      {canEdit(trip) && ideas.length > 0 && (
+        <section className="fit-ideas" aria-label="Fit ideas into days">
+          <div>
+            <strong>{ideas.length} {ideas.length === 1 ? 'idea isn\'t' : 'ideas aren\'t'} on a day yet</strong>
+            <span>Fit them into the days by where they are. You'll see a preview before anything changes.</span>
+          </div>
+          <div className="row" style={{ gap: 10 }}>
+            <PaceSwitch value={mode} onChange={setMode} />
+            <button className="btn btn-primary" disabled={optimize.isPending}
+              onClick={() => optimize.mutate({ mode, scope: 'SELECTION', destinationIds: ideas.map((d) => d.id) })}>
+              <SparkleIcon /> Fit into days
+            </button>
+          </div>
+        </section>
+      )}
+      {(schedule.error ?? optimize.error) && <div role="alert" className="error" style={{ marginTop: 16 }}>{(schedule.error ?? optimize.error)!.message}</div>}
       <ul style={{ listStyle: 'none', margin: '20px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {shown.length === 0 && <li><Empty title="No places here yet.">Add a few spots you're curious about. They can sit here until you decide on a day.</Empty></li>}
         {shown.map((d) => (
-          <li key={d.id} className="card spread" style={{ padding: '12px 16px', borderRadius: 16 }}>
-            <button className="stop-main" onClick={() => setEditing(d)}>
-              <span style={{ display: 'block', fontWeight: 700 }}>{d.name}</span>
-              <span className="muted" style={{ display: 'block', fontSize: 13 }}>
-                {[d.dayIndex === null ? 'Unscheduled' : `Day ${d.dayIndex + 1} · ${formatDay(dayDate(trip, d.dayIndex))}${d.startTime ? ` · ${d.startTime.slice(0, 5)}` : ''}`,
-                  bestTime(d)].filter(Boolean).join(' · ')}
+          <li key={d.id} className="card spread dest-row" style={d.dayIndex === null ? undefined : { '--c': dayColor(d.dayIndex) } as CSSProperties}>
+            <button className="stop-main row" style={{ gap: 12, flexWrap: 'nowrap' }} onClick={() => setEditing(d)}>
+              {/* Name first for screen readers; the day chip still shows first (CSS order). */}
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontWeight: 700 }}>{d.name}</span>
+                {(d.startTime || bestTime(d)) && (
+                  <span className="muted" style={{ display: 'block', fontSize: 13 }}>
+                    {[d.startTime?.slice(0, 5), bestTime(d)].filter(Boolean).join(' · ')}
+                  </span>
+                )}
               </span>
+              <span className="sr-only">, </span>
+              {d.dayIndex === null
+                ? <span className="day-tag day-tag-idea">Idea</span>
+                : <span className="day-tag" title={formatDay(dayDate(trip, d.dayIndex))}>Day {d.dayIndex + 1}</span>}
             </button>
             {d.dayIndex === null && canEdit(trip) && (
               <label className="row" style={{ fontSize: 13, fontWeight: 700, gap: 8 }}>
@@ -385,23 +445,23 @@ export function TripPage({ tab }: { tab: Tab }) {
   useTripLive(tripId)
   const trip = useQuery({ queryKey: ['trip', tripId], queryFn: () => api<Trip>(`/api/trips/${tripId}`) })
   const destinations = useQuery({ queryKey: ['destinations', tripId], queryFn: () => api<Destination[]>(`/api/trips/${tripId}/destinations`) })
-  const proposals = useQuery({ queryKey: ['proposals', tripId], queryFn: () => api<Proposal[]>(`/api/trips/${tripId}/proposals`) })
+  const proposals = useProposalCounts(tripId)
 
   if (trip.error || destinations.error) {
     return (
       <main className="page">
         <div role="alert" className="error">{(trip.error ?? destinations.error)!.message}</div>
-        <p><Link to="/">Back to My Trips</Link></p>
+        <p><Link to="/trips">Back to My Trips</Link></p>
       </main>
     )
   }
   if (!trip.data || !destinations.data) return null
   return (
     <>
-      <TripHeader trip={trip.data} tab={tab} openProposals={proposals.data?.filter((p) => p.status === 'OPEN').length ?? 0} />
+      <TripHeader trip={trip.data} tab={tab} openProposals={proposals.data?.OPEN ?? 0} />
       {tab === 'main' && <Itinerary trip={trip.data} destinations={destinations.data} />}
       {tab === 'destinations' && <DestinationsTab trip={trip.data} destinations={destinations.data} />}
-      {tab === 'suggestions' && <SuggestionsTab trip={trip.data} destinations={destinations.data} proposals={proposals.data ?? []} />}
+      {tab === 'suggestions' && <SuggestionsTab trip={trip.data} destinations={destinations.data} />}
       {tab === 'members' && <MembersTab trip={trip.data} />}
       {tab === 'activity' && <ActivityTab trip={trip.data} />}
       {askOpen

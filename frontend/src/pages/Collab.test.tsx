@@ -12,7 +12,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 const routes = (
   <>
-    <Route path="/" element={<h1>Home</h1>} />
+    <Route path="/trips" element={<h1>Home</h1>} />
     <Route path="/trips/:tripId" element={<TripPage tab="main" />} />
     <Route path="/trips/:tripId/members" element={<TripPage tab="members" />} />
     <Route path="/trips/:tripId/activity" element={<TripPage tab="activity" />} />
@@ -128,6 +128,23 @@ it('activity lists changes and undoes one', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('undo would overwrite')
   expect(calls.some((c) => c.url.endsWith('/undo'))).toBe(true)
+})
+
+it('activity loads older changes a page at a time', async () => {
+  const event = (id: number) => ({ id, actorId: 'u2', actorName: 'Mina', type: 'DESTINATION_ADDED', summary: `change ${id}`,
+    createdAt: new Date().toISOString(), undoable: false, undone: false })
+  const calls = mockApi({
+    'GET /api/trips/t1': () => json(200, trip()),
+    'GET /api/trips/t1/destinations': () => json(200, []),
+    'GET /api/trips/t1/events': (_, url) => json(200, url.includes('before=71')
+      ? [event(70)] : Array.from({ length: 30 }, (_, i) => event(100 - i))),
+  })
+  renderAt('/trips/t1/activity', routes)
+  expect(await screen.findByText('change 100')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Show older' }))
+  expect(await screen.findByText('change 70')).toBeInTheDocument()
+  expect(calls.filter((c) => c.url.includes('/events')).map((c) => c.url.split('?')[1])).toEqual(['limit=30', 'limit=30&before=71'])
+  expect(screen.queryByRole('button', { name: 'Show older' })).toBeNull()
 })
 
 it('formats relative times', () => {

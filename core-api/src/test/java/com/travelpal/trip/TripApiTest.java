@@ -82,6 +82,15 @@ class TripApiTest extends IntegrationTest {
         mvc.perform(json(post("/api/trips"), who, TRIP.replace("2027-06-17", "2027-06-01"))).andExpect(status().isBadRequest());
         mvc.perform(json(post("/api/trips"), who, TRIP.replace("2027-06-17", "2027-09-30"))).andExpect(status().isBadRequest());
         mvc.perform(json(post("/api/trips"), who, "{\"name\":\"\"}")).andExpect(status().isBadRequest());
+        mvc.perform(json(post("/api/trips"), who, TRIP.replace("35.68", "999"))).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void placeSearchRejectsBadQueriesAsBadRequests() throws Exception {
+        Login who = register();
+        mvc.perform(auth(get("/api/places/search?q="), who)).andExpect(status().isBadRequest());
+        mvc.perform(auth(get("/api/places/search?q=" + "a".repeat(201)), who)).andExpect(status().isBadRequest());
+        mvc.perform(auth(get("/api/places/search?q=ok&lat=91&lng=0"), who)).andExpect(status().isBadRequest());
     }
 
     @Test

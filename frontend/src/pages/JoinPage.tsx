@@ -23,7 +23,7 @@ export function JoinPage() {
           <div className="card" style={{ padding: 24 }}>
             <h1 style={{ fontSize: 24, fontWeight: 800 }}>This invite doesn’t work</h1>
             <p className="muted">{preview.error.message}. Ask a trip member for a new link.</p>
-            <Link to="/">Go to My Trips</Link>
+            <Link to="/trips">Go to My Trips</Link>
           </div>
         )}
         {p && (

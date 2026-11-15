@@ -133,15 +133,31 @@ it('destinations tab filters and schedules ideas', async () => {
   renderAt('/trips/t1/destinations', routes)
   await userEvent.click(await screen.findByRole('button', { name: 'Unscheduled · 1' }))
   expect(screen.getByText('Golden Gai')).toBeInTheDocument()
-  expect(screen.getByText('Unscheduled · Best after 20:00')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /^Golden Gai Best after 20:00, ?Idea$/ })).toBeInTheDocument()
   expect(screen.queryByText('Senso-ji')).not.toBeInTheDocument()
   await userEvent.selectOptions(screen.getByLabelText('Add Golden Gai to day'), '1')
   await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toMatchObject({ name: 'Golden Gai', dayIndex: 1 }))
 
   await userEvent.click(screen.getByRole('button', { name: 'Scheduled · 4' }))
-  expect(screen.getByText('Day 1 · Thu, Jun 10 · 12:00')).toBeInTheDocument()
+  const cat = screen.getByRole('button', { name: /^Cat Street 12:00, ?Day 1$/ })
+  expect(cat.closest('li')).toHaveStyle({ '--c': '#14A098' })
   await userEvent.click(screen.getByRole('button', { name: /Add Destination/ }))
   expect(screen.getByLabelText('Day')).toHaveValue('')
+})
+
+it('fits every idea into days with one optimizer run', async () => {
+  const calls = mockApi({
+    'GET /api/trips/t1': () => json(200, trip()),
+    'GET /api/trips/t1/destinations': () => json(200, [...stops, dest('Tsukiji', null, null)]),
+    'POST /api/trips/t1/optimize': () => json(201, { id: 'pv1' }),
+  })
+  renderAt('/trips/t1/destinations', routes)
+  expect(await screen.findByText("2 ideas aren't on a day yet")).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Relaxed' }))
+  await userEvent.click(screen.getByRole('button', { name: /Fit into days/ }))
+  await waitFor(() => expect(calls.find((c) => c.url.endsWith('/optimize'))?.body).toEqual({
+    mode: 'RELAXED', scope: 'SELECTION', destinationIds: ['Golden Gai', 'Tsukiji'],
+  }))
 })
 
 it('shows not-found errors', async () => {

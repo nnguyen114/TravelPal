@@ -61,6 +61,9 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .btn-soft { background: #FAF9F6; border: 1px solid var(--line); min-height: 40px; font-size: 13px; padding: 0 14px; border-radius: 10px; }
 .btn-danger { background: var(--danger-ink); border-color: var(--danger-ink); color: #fff; }
 button.avatar { cursor: pointer; padding: 0; }
+.me-link { display: inline-flex; align-items: center; gap: 8px; padding: 3px 12px 3px 3px; border-radius: 999px; border: 1px solid var(--line); font-weight: 700; font-size: 14px; color: inherit; text-decoration: none; }
+.me-link:hover { background: var(--soft); }
+.me-link span:last-child { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn-dark { background: var(--ink); border-color: var(--ink); color: #fff; border-radius: 999px; }
 .icon-btn { width: 44px; height: 44px; padding: 0; border: 0; background: transparent; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; }
 
@@ -96,12 +99,20 @@ dialog input, dialog select, dialog textarea { min-width: 0; }
 
 .workspace { max-width: 1440px; margin: 0 auto; padding: 24px 32px 96px; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
 .itinerary { flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
-.map-panel { flex: 1 1 520px; min-width: 0; position: sticky; top: 16px; padding: 16px; border-radius: 24px; }
-.map-box { margin-top: 14px; border-radius: 18px; overflow: hidden; background: #EEF3EC; height: min(600px, calc(100vh - 140px)); position: relative; }
+.trip-head { position: sticky; top: 0; z-index: 15; }
+.map-panel { flex: 1 1 520px; min-width: 0; position: sticky; top: calc(var(--trip-head, 0px) + 16px); z-index: 5; padding: 16px; border-radius: 24px; }
+.map-box { margin-top: 14px; border-radius: 18px; overflow: hidden; background: #EEF3EC; height: min(600px, calc(100vh - 140px - var(--trip-head, 0px))); position: relative; }
 .map-empty { position: absolute; left: 16px; right: 16px; top: 16px; z-index: 3; background: var(--warn-bg); color: var(--warn-ink); border-radius: 12px; padding: 10px 14px; font-size: 13px; font-weight: 600; box-shadow: var(--shadow-sm); }
 .map-note { position: absolute; left: 16px; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.94); border-radius: 12px; padding: 10px 14px; font-size: 12px; color: var(--ink-2); z-index: 3; }
 
-.day-card { padding: 20px 22px; scroll-margin-top: 16px; }
+.dest-row { padding: 12px 16px; border-radius: 16px; border-left: 5px solid var(--c, var(--line-2)); }
+/* Tint + same-hue dark text: 6.7:1 or better on every day color (white on the full color falls short of 4.5:1). */
+.day-tag { order: -1; flex: none; min-width: 58px; text-align: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; color: color-mix(in srgb, var(--c) 50%, #000); background: color-mix(in srgb, var(--c) 18%, #fff); }
+.day-tag-idea { color: var(--ink-2); background: none; border: 1.5px dashed var(--line-2); }
+.fit-ideas { margin-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; background: var(--accent-soft); border-radius: 20px; padding: 16px 20px; }
+.fit-ideas > div:first-child { display: flex; flex-direction: column; gap: 2px; font-size: 14px; color: var(--ink-2); }
+.fit-ideas strong { font-size: 15px; color: var(--ink); }
+.day-card { padding: 20px 22px; scroll-margin-top: calc(var(--trip-stack, 0px) + 16px); }
 .day-card[data-active='true'] { box-shadow: 0 0 0 2px #A8DCD5; }
 .stop { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 14px; background: #FAF9F6; }
 .stop[data-selected='true'] { background: #FFF8E6; }
@@ -118,8 +129,9 @@ dialog input, dialog select, dialog textarea { min-width: 0; }
 .ask-ai { position: fixed; right: 32px; bottom: 28px; min-height: 52px; padding: 0 22px 0 18px; font-size: 15px; box-shadow: 0 8px 24px rgba(28,36,48,.22); z-index: 10; }
 
 @media (max-width: 1100px) {
-  .map-panel { order: -1; position: static; flex-basis: 100%; padding: 12px; }
-  .map-box { height: 300px; }
+  /* Narrow: the map sits above the days and stays pinned under the header, so the day picker is always in reach. */
+  .map-panel { order: -1; top: var(--trip-head, 0px); flex-basis: 100%; padding: 12px; border-radius: 0 0 20px 20px; }
+  .map-box { height: clamp(110px, 26vh, 220px); }
 }
 @media (max-width: 640px) {
   .workspace { padding: 16px 16px 96px; }
@@ -130,6 +142,10 @@ dialog input, dialog select, dialog textarea { min-width: 0; }
   .assistant { top: 10vh; border-radius: 22px 22px 0 0; border-left: 0; }
   .ask-ai { right: 16px; bottom: 16px; }
   .optimize-page { padding: 20px 16px 40px !important; }
+  /* Phones: the full header would eat the screen; only the map and its day picker stay pinned. */
+  .trip-head { position: static; }
+  .map-box { height: clamp(100px, 22vh, 180px); }
+  .map-note { display: none; }
 }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .free-time { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1.5px dashed var(--free-line); background: var(--free-bg); border-radius: 14px; padding: 8px 14px; font-size: 14px; color: #6B4A00; }
@@ -156,6 +172,11 @@ dialog input, dialog select, dialog textarea { min-width: 0; }
 
 /* Fields: a soft teal ring on focus */
 .field input, .field textarea, .field select { transition: border-color .2s, box-shadow .25s var(--ease); }
+.pw-field { position: relative; display: flex; }
+.pw-field input { flex: 1; padding-right: 72px; }
+.pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); min-height: 32px; min-width: 56px; border: 0; border-radius: 8px; background: none; color: var(--accent); font-weight: 700; font-size: 13px; cursor: pointer; }
+.pw-toggle:hover { background: var(--accent-tint); }
+.pw-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-tint); }
 
 /* Surfaces */

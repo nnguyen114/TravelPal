@@ -32,7 +32,7 @@ export type PlanResult = {
 }
 export type Preview = {
   id: string; status: 'PENDING' | 'READY' | 'FAILED' | 'APPLIED' | 'DISCARDED'; stale: boolean
-  request: { mode: Mode; scope: 'TRIP' | 'DAY' | 'SELECTION'; dayIndex: number | null; instructions: string | null }
+  request: { mode: Mode; scope: 'TRIP' | 'DAY' | 'SELECTION'; dayIndex: number | null; destinationIds?: string[]; instructions: string | null }
   result: PlanResult | null; error: string | null; createdAt: string
 }
 

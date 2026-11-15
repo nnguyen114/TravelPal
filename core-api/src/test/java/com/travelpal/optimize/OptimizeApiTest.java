@@ -178,6 +178,9 @@ class OptimizeApiTest extends IntegrationTest {
         mvc.perform(auth(post(base + "/previews/" + id + "/apply"), who)).andExpect(status().isConflict());
 
         String other = request("{\"mode\":\"BALANCED\",\"scope\":\"SELECTION\",\"destinationIds\":[\"%s\"]}".formatted(b));
+        // The preview keeps which places were selected, so "re-run" fits the same places, not the whole trip.
+        mvc.perform(auth(get(base + "/previews/" + other), who)).andExpect(jsonPath("$.request.scope").value("SELECTION"))
+            .andExpect(jsonPath("$.request.destinationIds[0]").value(b));
         mvc.perform(auth(post(base + "/previews/" + other + "/discard"), who)).andExpect(status().isNoContent());
         mvc.perform(auth(get(base + "/previews/" + other), who)).andExpect(jsonPath("$.status").value("DISCARDED"));
         mvc.perform(auth(post(base + "/previews/" + other + "/discard"), who)).andExpect(status().isNoContent());
