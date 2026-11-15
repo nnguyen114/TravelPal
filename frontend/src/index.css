@@ -105,6 +105,13 @@ dialog input, dialog select, dialog textarea { min-width: 0; }
 .map-empty { position: absolute; left: 16px; right: 16px; top: 16px; z-index: 3; background: var(--warn-bg); color: var(--warn-ink); border-radius: 12px; padding: 10px 14px; font-size: 13px; font-weight: 600; box-shadow: var(--shadow-sm); }
 .map-note { position: absolute; left: 16px; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.94); border-radius: 12px; padding: 10px 14px; font-size: 12px; color: var(--ink-2); z-index: 3; }
 
+.dest-row { padding: 12px 16px; border-radius: 16px; border-left: 5px solid var(--c, var(--line-2)); }
+/* Tint + same-hue dark text: 6.7:1 or better on every day color (white on the full color falls short of 4.5:1). */
+.day-tag { order: -1; flex: none; min-width: 58px; text-align: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; color: color-mix(in srgb, var(--c) 50%, #000); background: color-mix(in srgb, var(--c) 18%, #fff); }
+.day-tag-idea { color: var(--ink-2); background: none; border: 1.5px dashed var(--line-2); }
+.fit-ideas { margin-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; background: var(--accent-soft); border-radius: 20px; padding: 16px 20px; }
+.fit-ideas > div:first-child { display: flex; flex-direction: column; gap: 2px; font-size: 14px; color: var(--ink-2); }
+.fit-ideas strong { font-size: 15px; color: var(--ink); }
 .day-card { padding: 20px 22px; scroll-margin-top: calc(var(--trip-stack, 0px) + 16px); }
 .day-card[data-active='true'] { box-shadow: 0 0 0 2px #A8DCD5; }
 .stop { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 14px; background: #FAF9F6; }

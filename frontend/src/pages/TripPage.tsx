@@ -359,6 +359,9 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
       api(`/api/trips/${trip.id}/destinations/${d.id}`, { method: 'PUT', body: toInput(d, { dayIndex: day }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['destinations', trip.id] }),
   })
+  const [mode, setMode] = useState<Mode>('BALANCED')
+  const optimize = useOptimize(trip.id)
+  const ideas = destinations.filter((d) => d.dayIndex === null)
   const shown = destinations.filter((d) => filter === 'all' || (filter === 'scheduled') === (d.dayIndex !== null))
   const count = (f: Filter) => destinations.filter((d) => f === 'all' || (f === 'scheduled') === (d.dayIndex !== null)).length
 
@@ -377,17 +380,40 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
           {canEdit(trip) && <button className="btn" onClick={() => setAdding(true)}><PlusIcon /> Add Destination</button>}
         </div>
       </div>
-      {schedule.error && <div role="alert" className="error" style={{ marginTop: 16 }}>{schedule.error.message}</div>}
+      {canEdit(trip) && ideas.length > 0 && (
+        <section className="fit-ideas" aria-label="Fit ideas into days">
+          <div>
+            <strong>{ideas.length} {ideas.length === 1 ? 'idea isn\'t' : 'ideas aren\'t'} on a day yet</strong>
+            <span>Fit them into the days by where they are. You'll see a preview before anything changes.</span>
+          </div>
+          <div className="row" style={{ gap: 10 }}>
+            <PaceSwitch value={mode} onChange={setMode} />
+            <button className="btn btn-primary" disabled={optimize.isPending}
+              onClick={() => optimize.mutate({ mode, scope: 'SELECTION', destinationIds: ideas.map((d) => d.id) })}>
+              <SparkleIcon /> Fit into days
+            </button>
+          </div>
+        </section>
+      )}
+      {(schedule.error ?? optimize.error) && <div role="alert" className="error" style={{ marginTop: 16 }}>{(schedule.error ?? optimize.error)!.message}</div>}
       <ul style={{ listStyle: 'none', margin: '20px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {shown.length === 0 && <li><Empty title="No places here yet.">Add a few spots you're curious about. They can sit here until you decide on a day.</Empty></li>}
         {shown.map((d) => (
-          <li key={d.id} className="card spread" style={{ padding: '12px 16px', borderRadius: 16 }}>
-            <button className="stop-main" onClick={() => setEditing(d)}>
-              <span style={{ display: 'block', fontWeight: 700 }}>{d.name}</span>
-              <span className="muted" style={{ display: 'block', fontSize: 13 }}>
-                {[d.dayIndex === null ? 'Unscheduled' : `Day ${d.dayIndex + 1} · ${formatDay(dayDate(trip, d.dayIndex))}${d.startTime ? ` · ${d.startTime.slice(0, 5)}` : ''}`,
-                  bestTime(d)].filter(Boolean).join(' · ')}
+          <li key={d.id} className="card spread dest-row" style={d.dayIndex === null ? undefined : { '--c': dayColor(d.dayIndex) } as CSSProperties}>
+            <button className="stop-main row" style={{ gap: 12, flexWrap: 'nowrap' }} onClick={() => setEditing(d)}>
+              {/* Name first for screen readers; the day chip still shows first (CSS order). */}
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontWeight: 700 }}>{d.name}</span>
+                {(d.startTime || bestTime(d)) && (
+                  <span className="muted" style={{ display: 'block', fontSize: 13 }}>
+                    {[d.startTime?.slice(0, 5), bestTime(d)].filter(Boolean).join(' · ')}
+                  </span>
+                )}
               </span>
+              <span className="sr-only">, </span>
+              {d.dayIndex === null
+                ? <span className="day-tag day-tag-idea">Idea</span>
+                : <span className="day-tag" title={formatDay(dayDate(trip, d.dayIndex))}>Day {d.dayIndex + 1}</span>}
             </button>
             {d.dayIndex === null && canEdit(trip) && (
               <label className="row" style={{ fontSize: 13, fontWeight: 700, gap: 8 }}>
