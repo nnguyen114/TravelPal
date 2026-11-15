@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, readEvents } from './api'
 import { CloseIcon, SparkleIcon } from './icons'
 import { useOptimize } from './optimize'
-import { canEdit } from './trip'
+import { canEdit, km } from './trip'
 import type { Mode, Place, Trip } from './types'
 
 type Proposal =
@@ -14,6 +14,8 @@ type Msg = { role: 'user' | 'assistant'; content: string; proposals: Proposal[] 
 
 /** The API takes the last 40 messages; a long chat sends its most recent ones, starting with something the traveler said. */
 const MAX_MESSAGES = 40
+/** A search match farther than this from every trip city is a different place with the same name. */
+const NEAR_TRIP_KM = 300
 export function recent(history: Msg[]) {
   let last = history.slice(-MAX_MESSAGES)
   while (last.length && last[0].role !== 'user') last = last.slice(1)
@@ -26,9 +28,12 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
   const qc = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<string | null>(null)
-  const bias = trip.cities.find((c) => c.lat != null)
+  const cities = trip.cities.filter((c): c is typeof c & { lat: number; lng: number } => c.lat != null && c.lng != null)
+  const bias = cities[0]
 
-  // ponytail: takes the top search match per name; add a pick-the-right-one step if matches go wrong often.
+  // Takes the top search match per name, but only near the trip: a same-named place on another continent is added
+  // by name instead ("not on the map yet"), where the traveler picks the right one.
+  // ponytail: add a pick-the-right-one step here if top matches still go wrong often.
   async function add() {
     setBusy(true)
     let unlocated = 0
@@ -43,6 +48,7 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
       let match: Place | undefined
       try {
         match = (await api<Place[]>(`/api/places/search?${q}`))[0]
+        if (match && cities.length && !cities.some((c) => km(c, match!) <= NEAR_TRIP_KM)) match = undefined
       } catch {
         searchDown = true // still add it by name; the traveler can locate it later
       }

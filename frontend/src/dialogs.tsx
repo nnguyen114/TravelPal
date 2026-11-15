@@ -63,44 +63,52 @@ export function PlaceSearch({ label, bias, onPick, required = true, initial = ''
   const [results, setResults] = useState<Place[]>([])
   const [picked, setPicked] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [searching, setSearching] = useState(false)
+  // The text whose results are on screen (or on their way); answers for older text are dropped.
+  const asked = useRef<string | null>(null)
 
-  async function search(text = q) {
-    if (!text.trim()) return
-    const params = new URLSearchParams({ q: text })
+  async function search(text: string) {
+    const t = text.trim()
+    if (t.length < 2 || t === asked.current) return
+    asked.current = t
+    const params = new URLSearchParams({ q: t })
     if (bias?.lat != null && bias?.lng != null) {
       params.set('lat', String(bias.lat))
       params.set('lng', String(bias.lng))
     }
     setError(null)
+    setSearching(true)
     try {
-      setResults(await api<Place[]>(`/api/places/search?${params}`))
+      const found = await api<Place[]>(`/api/places/search?${params}`)
+      if (asked.current === t) setResults(found)
     } catch (e) {
+      if (asked.current !== t) return
       setResults([])
       setError((e as Error).message) // e.g. the provider is down: say so rather than show "no matches"
+    } finally {
+      if (asked.current === t) setSearching(false)
     }
   }
 
-  // Arriving with a destination already chosen (e.g. from the landing page): look it up straight away.
-  const first = useRef(initial)
+  // Results as you type, after a short pause (Enter searches straight away). Also covers arriving with text filled in.
   useEffect(() => {
-    if (first.current.trim()) search(first.current)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (picked) return
+    const timer = setTimeout(() => search(q), 400)
+    return () => clearTimeout(timer)
+  }, [q, picked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="field">
       <label htmlFor="place-q">{label}</label>
-      <div className="row" style={{ flexWrap: 'nowrap' }}>
-        <input id="place-q" style={{ flex: 1 }} value={q} required={required} maxLength={200}
-          onChange={(e) => { setQ(e.target.value); setPicked(null); onPick(null, e.target.value) }}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); search() } }} />
-        <button type="button" className="btn" onClick={() => search()}>Search</button>
-      </div>
+      <input id="place-q" value={q} required={required} maxLength={200} autoComplete="off" placeholder="Start typing a place or city"
+        onChange={(e) => { setQ(e.target.value); setPicked(null); onPick(null, e.target.value) }}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); search(q) } }} />
       {results.length > 0 && !picked && (
         <ul aria-label="Search results" style={{ listStyle: 'none', margin: 0, padding: 0, border: '1px solid var(--line)', borderRadius: 12, maxHeight: 220, overflow: 'auto' }}>
           {results.map((p) => (
             <li key={p.providerId}>
               <button type="button" style={{ width: '100%', textAlign: 'left', border: 0, background: 'none', padding: '10px 12px', minHeight: 44 }}
-                onClick={() => { setQ(p.name); setPicked(p.providerId); setResults([]); onPick(p, p.name) }}>
+                onClick={() => { setQ(p.name); setPicked(p.providerId); setResults([]); asked.current = null; onPick(p, p.name) }}>
                 <strong style={{ display: 'block', fontSize: 14 }}>{p.name}</strong>
                 <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>{p.address}</span>
               </button>
@@ -112,7 +120,12 @@ export function PlaceSearch({ label, bias, onPick, required = true, initial = ''
         </ul>
       )}
       {error && <div role="alert" className="error">{error} You can still add it as typed, without a map location.</div>}
-      {!picked && q && !error && <span className="muted" style={{ fontWeight: 500 }}>Not finding it? It will be added as typed.</span>}
+      <span className="muted" style={{ fontWeight: 500 }} aria-live="polite">
+        {picked || error || q.trim().length < 2 ? ''
+          : searching ? 'Searching…'
+          : results.length ? 'Pick one, or keep typing to add it as typed.'
+          : asked.current === q.trim() ? 'No matches. It will be added as typed.' : ''}
+      </span>
     </div>
   )
 }
@@ -265,8 +278,11 @@ export function AddDestinationDialog({ trip, day, onClose }: { trip: Trip; day: 
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>Adding to a day doesn’t move anything else. Optimize only runs when you ask.</p>
         {errorText(save.error ?? propose.error)}
         <div className="row" style={{ justifyContent: 'flex-end' }}>
-          <button type="button" className="btn" disabled={propose.isPending} onClick={(e) => proposeIt(e.currentTarget.form!)}>Propose to Group</button>
-          <button className="btn btn-primary" disabled={save.isPending}>Add Directly</button>
+          {/* Proposing only means something when there's a group to weigh in. */}
+          {trip.members.length > 1 && (
+            <button type="button" className="btn" disabled={propose.isPending} onClick={(e) => proposeIt(e.currentTarget.form!)}>Propose to Group</button>
+          )}
+          <button className="btn btn-primary" disabled={save.isPending}>{trip.members.length > 1 ? 'Add Directly' : 'Add'}</button>
         </div>
       </form>
     </Modal>

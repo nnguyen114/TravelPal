@@ -33,6 +33,7 @@ it('shows the landing page to visitors, logs in, then logs out', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Show password' }))
   await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
   expect(await screen.findByRole('heading', { name: 'My Trips' })).toBeInTheDocument()
+  expect(window.location.pathname).toBe('/trips') // not left on /login
   expect(screen.getByText(/^(Good (morning|afternoon|evening)|Up late), Win/)).toBeInTheDocument()
 
   await userEvent.click(screen.getByRole('button', { name: 'Log out' }))

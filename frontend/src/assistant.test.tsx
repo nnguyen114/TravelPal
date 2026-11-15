@@ -24,8 +24,10 @@ function setup(stream: () => Response, role: 'OWNER' | 'VIEWER' = 'OWNER') {
     'GET /api/trips/t1': () => json(200, trip({ role })),
     'GET /api/trips/t1/destinations': () => json(200, []),
     'POST /api/trips/t1/assistant': stream,
+    // "Tiny bar" only matches a same-named bar in Paris: too far from the trip, so it's added by name instead.
     'GET /api/places/search': (_, url) => json(200, url.includes('Tsukiji')
-      ? [{ name: 'Tsukiji Outer Market', address: 'Chuo, Tokyo', lat: 35.66, lng: 139.77, providerId: 'osm:N1' }] : []),
+      ? [{ name: 'Tsukiji Outer Market', address: 'Chuo, Tokyo', lat: 35.66, lng: 139.77, providerId: 'osm:N1' }]
+      : url.includes('Tiny') ? [{ name: 'Tiny Bar', address: 'Paris', lat: 48.86, lng: 2.35, providerId: 'osm:N2' }] : []),
     'POST /api/trips/t1/destinations': (b) => ((b as { name: string }).name === 'Dup' ? json(409, { detail: 'dup' }) : json(201, b)),
     'POST /api/trips/t1/optimize': () => json(202, { id: 'p9', status: 'PENDING' }),
   })

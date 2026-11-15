@@ -30,6 +30,13 @@ export function cityForDay(cities: City[], isoDate: string): City | undefined {
     ?? cities.find((c) => !c.startDate) ?? cities[0]
 }
 
+/** Great-circle distance in km. */
+export function km(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const r = Math.PI / 180
+  const h = Math.sin(((b.lat - a.lat) * r) / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(((b.lng - a.lng) * r) / 2) ** 2
+  return 12742 * Math.asin(Math.sqrt(h))
+}
+
 export function formatDuration(min: number | null): string {
   if (!min) return ''
   const h = Math.floor(min / 60)
