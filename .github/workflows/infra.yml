@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: infra/terraform } }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: "1.13.x" }
       - run: terraform fmt -check -recursive
@@ -17,7 +17,7 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # Terraform and Dockerfile misconfigurations; deliberate exceptions carry a trivy:ignore comment with the reason.
       - uses: aquasecurity/trivy-action@v0.36.0
         with: { scan-type: config, scan-ref: ., severity: "HIGH,CRITICAL", exit-code: "1" }
@@ -30,7 +30,7 @@ jobs:
           - { name: ai-service, file: ai-service/Dockerfile, context: ai-service }
           - { name: render-app, file: deploy/render/app.Dockerfile, context: . } # web app + core-api for Render
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: docker build -f ${{ matrix.file }} -t ${{ matrix.name }} ${{ matrix.context }}
       - uses: aquasecurity/trivy-action@v0.36.0
         with: { image-ref: "${{ matrix.name }}", scanners: vuln, severity: "HIGH,CRITICAL", ignore-unfixed: true, exit-code: "1" }
