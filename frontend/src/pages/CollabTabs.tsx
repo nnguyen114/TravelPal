@@ -22,6 +22,8 @@ export function MembersTab({ trip }: { trip: Trip }) {
     onSuccess: (_, id) => (id === user?.id ? navigate('/trips') : refresh()),
   })
   const error = setRole.error ?? remove.error
+  // The server keeps at least one owner; don't offer a Leave button that can only fail.
+  const lastOwner = trip.members.filter((m) => m.role === 'OWNER').length === 1
 
   return (
     <main className="page" style={{ maxWidth: 760, paddingTop: 24 }}>
@@ -46,8 +48,10 @@ export function MembersTab({ trip }: { trip: Trip }) {
                     {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                   </select>
                 ) : <span className="pill">{ROLE_LABEL[m.role]}</span>}
-                {(me || isOwner) && (
-                  <button className="btn btn-soft" onClick={() => remove.mutate(m.userId)}>{me ? 'Leave trip' : 'Remove'}</button>
+                {(me || isOwner) && !(me && isOwner && lastOwner) && (
+                  <button className="btn btn-soft" onClick={() => {
+                    if (confirm(me ? `Leave ${trip.name}? You'll need a new invite to come back.` : `Remove ${m.displayName} from ${trip.name}?`)) remove.mutate(m.userId)
+                  }}>{me ? 'Leave trip' : 'Remove'}</button>
                 )}
               </div>
             </li>

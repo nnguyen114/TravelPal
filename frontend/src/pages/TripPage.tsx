@@ -23,8 +23,10 @@ const TripMap = lazy(() => import('../map/TripMap').then((m) => ({ default: m.Tr
 const AVATAR_BG = ['#FFD9A8', '#BFE6E1', '#D9D4FB', '#FDE7DF']
 
 function TripHeader({ trip, tab, openProposals }: { trip: Trip; tab: Tab; openProposals: number }) {
-  const shown = trip.members.slice(0, 3)
   const { user } = useAuth()
+  // You're shown on the right (link to My Trips); the stack is everyone else.
+  const others = trip.members.filter((m) => m.userId !== user?.id)
+  const shown = others.slice(0, 3)
   const [inviting, setInviting] = useState(false)
   const [today] = useState(() => new Date())
   return (
@@ -52,7 +54,7 @@ function TripHeader({ trip, tab, openProposals }: { trip: Trip; tab: Tab; openPr
                   {m.displayName.slice(0, 1).toUpperCase()}
                 </span>
               ))}
-              {trip.members.length > 3 && <span className="avatar" style={{ background: 'var(--soft)', marginLeft: -8 }}>+{trip.members.length - 3}</span>}
+              {others.length > 3 && <span className="avatar" style={{ background: 'var(--soft)', marginLeft: -8 }}>+{others.length - 3}</span>}
             </div>
             {canEdit(trip) && <button className="btn" onClick={() => setInviting(true)}><LinkIcon /> Invite</button>}
             <Link to="/trips" className="me-link" title="My Trips">
@@ -302,7 +304,9 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
         {destinations.length === 0 && (
           <div className="card" style={{ padding: 22 }}>
             <h2 style={{ fontSize: 18, fontWeight: 800 }}>Start with the places you want to go</h2>
-            <p className="muted" style={{ margin: '6px 0 0', fontSize: 14 }}>Search or type each place. Add it to a day now, or save it as an idea for later.</p>
+            <p className="muted" style={{ margin: '6px 0 0', fontSize: 14 }}>
+              Add them one at a time, or paste a whole list into <strong>Ask AI</strong>. Then Optimize Trip sorts them into days.
+            </p>
           </div>
         )}
         {days.map((stops, i) => (

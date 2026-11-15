@@ -1,6 +1,6 @@
 import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ApiError } from './api'
-import { BrowserRouter, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AuthProvider, useAuth } from './auth'
 import { AuthPage } from './pages/AuthPage'
 import { Dashboard } from './pages/Dashboard'
@@ -19,6 +19,12 @@ export function makeQueryClient() {
 }
 const queryClient = makeQueryClient()
 
+/** Signed in on /login or /signup (e.g. just signed up): show My Trips at its own address, keeping ?to=City. */
+function ToTrips() {
+  const { search } = useLocation()
+  return <Navigate to={`/trips${search}`} replace />
+}
+
 function Routed() {
   const { user, ready } = useAuth()
   if (!ready) return null
@@ -36,6 +42,8 @@ function Routed() {
     <Routes>
       <Route path="/" element={<Landing signedIn />} />
       <Route path="/trips" element={<Dashboard />} />
+      <Route path="/login" element={<ToTrips />} />
+      <Route path="/signup" element={<ToTrips />} />
       <Route path="/trips/:tripId" element={<TripPage tab="main" />} />
       <Route path="/trips/:tripId/destinations" element={<TripPage tab="destinations" />} />
       <Route path="/trips/:tripId/members" element={<TripPage tab="members" />} />

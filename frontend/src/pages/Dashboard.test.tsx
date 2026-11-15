@@ -62,7 +62,7 @@ it('shows create errors and load errors', async () => {
   await userEvent.click(screen.getByRole('button', { name: /Start a new trip/ }))
   await userEvent.type(screen.getByLabelText('Trip name'), 'X')
   await userEvent.type(screen.getByLabelText('Destination'), 'Nowhere')
-  expect(screen.getByText(/added as typed/)).toBeInTheDocument()
+  expect(await screen.findByText(/as typed/)).toBeInTheDocument()
   await userEvent.type(screen.getByLabelText('Start'), '2027-06-10')
   await userEvent.type(screen.getByLabelText('End'), '2027-06-01')
   await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Create Trip' }))

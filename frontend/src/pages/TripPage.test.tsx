@@ -41,7 +41,8 @@ it('renders the day-by-day plan with header, locks, and unscheduled count', asyn
   renderAt('/trips/t1', routes)
   expect(await screen.findByRole('heading', { name: 'Japan 2027' })).toBeInTheDocument()
   expect(screen.getByText('Jun 10 – 12')).toBeInTheDocument()
-  expect(screen.getByLabelText('4 members')).toHaveTextContent('+1')
+  // You (Win) appear on the right; the stack shows the other three.
+  expect(screen.getByLabelText('4 members')).toHaveTextContent('MKL')
   const day1 = screen.getByRole('article', { name: 'Day 1' })
   expect(within(day1).getByText('Thu, Jun 10 · Tokyo')).toBeInTheDocument()
   expect(within(day1).getByText('2 stops')).toBeInTheDocument()

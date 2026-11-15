@@ -85,19 +85,25 @@ it('owner changes roles and removes members; members can leave', async () => {
     'GET /api/trips/t1/destinations': () => json(200, []),
     'PUT /api/trips/t1/members/u2': ok,
     'DELETE /api/trips/t1/members/u3': ok,
-    'DELETE /api/trips/t1/members/u1': () => json(400, { detail: 'Make someone else an owner first' }),
   })
+  const confirm = vi.fn(() => false)
+  vi.stubGlobal('confirm', confirm)
   renderAt('/trips/t1/members', routes)
   await userEvent.selectOptions(await screen.findByLabelText('Role for Mina'), 'VIEWER')
   await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ role: 'VIEWER' }))
   const kenji = screen.getByText('Kenji').closest('li')!
   await userEvent.click(within(kenji).getByRole('button', { name: 'Remove' }))
+  expect(confirm).toHaveBeenCalledWith('Remove Kenji from Japan 2027?')
+  expect(calls.some((c) => c.method === 'DELETE')).toBe(false) // said no
+  confirm.mockReturnValue(true)
+  await userEvent.click(within(kenji).getByRole('button', { name: 'Remove' }))
   await waitFor(() => expect(calls.some((c) => c.method === 'DELETE' && c.url.endsWith('u3'))).toBe(true))
-  await userEvent.click(screen.getByRole('button', { name: 'Leave trip' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('Make someone else an owner first')
+  // The only owner can't leave (the server would refuse), so there's no button to fail.
+  expect(screen.queryByRole('button', { name: 'Leave trip' })).toBeNull()
 })
 
 it('a member leaving goes home; non-owners see roles read-only', async () => {
+  vi.stubGlobal('confirm', () => true)
   mockApi({
     'GET /api/trips/t1': () => json(200, trip({ role: 'EDITOR', members: [{ userId: 'u1', displayName: 'Win', role: 'EDITOR' }, { userId: 'u9', displayName: 'Ana', role: 'OWNER' }] })),
     'GET /api/trips/t1/destinations': () => json(200, []),
