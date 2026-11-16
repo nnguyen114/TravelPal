@@ -97,7 +97,7 @@ export async function readEvents(
   if (res.status === 401 && (await refreshSession())) res = await send(path, init)
   if (!res.ok || !res.body) {
     const detail = await res.json().catch(() => null)
-    throw new ApiError(res.status, detail?.detail ?? 'Live updates unavailable')
+    throw new ApiError(res.status, detail?.detail ?? 'The connection dropped. Try again.')
   }
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''

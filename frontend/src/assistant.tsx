@@ -1,86 +1,110 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Link } from 'react-router'
 import { api, readEvents } from './api'
 import { CloseIcon, SparkleIcon } from './icons'
 import { useOptimize } from './optimize'
 import { canEdit, km } from './trip'
 import type { Mode, Place, Trip } from './types'
 
+/** A place the assistant chose: from its own map search (with a location) or by name only (looked up here). */
+type Pick = { name: string; day_number: number; lat?: number; lng?: number; providerId?: string; address?: string }
 type Proposal =
-  | { type: 'places'; places: { name: string; day_number: number }[] }
+  | { type: 'places'; places: Pick[] }
   | { type: 'optimize'; mode: Mode; day_number: number; instructions: string }
-  | { type: 'discover'; query: string; day_number: number }
-type Msg = { role: 'user' | 'assistant'; content: string; proposals: Proposal[] }
+type Msg = { role: 'user' | 'assistant'; content: string; proposals: Proposal[]; status?: string }
 
 /** The API takes the last 40 messages; a long chat sends its most recent ones, starting with something the traveler said. */
 const MAX_MESSAGES = 40
 /** A search match farther than this from every trip city is a different place with the same name. */
 const NEAR_TRIP_KM = 300
+/** Names listed in an added-places card; the rest are counted (they're all in Destinations). */
+const SHOWN = 6
 export function recent(history: Msg[]) {
   let last = history.slice(-MAX_MESSAGES)
   while (last.length && last[0].role !== 'user') last = last.slice(1)
   return last.map(({ role, content }) => ({ role, content: content || '…' }))
 }
 
-const SUGGESTED = ['How full is Day 1?', 'Here are some places: …', 'Make Day 2 lighter']
+const SUGGESTED = ['Find food and sights for my trip', 'How full is Day 1?', 'Make Day 2 lighter']
 
+/** Adds the assistant's places as soon as they arrive (editors only); the traveler keeps or undoes them. */
 function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 'places' }> }) {
   const qc = useQueryClient()
-  const [busy, setBusy] = useState(false)
-  const [done, setDone] = useState<string | null>(null)
+  const [added, setAdded] = useState<string[] | null>(null)
+  const [note, setNote] = useState('')
+  const started = useRef(false)
   const cities = trip.cities.filter((c): c is typeof c & { lat: number; lng: number } => c.lat != null && c.lng != null)
   const bias = cities[0]
+  const refresh = () => qc.invalidateQueries({ queryKey: ['destinations', trip.id] })
 
-  // Takes the top search match per name, but only near the trip: a same-named place on another continent is added
-  // by name instead ("not on the map yet"), where the traveler picks the right one.
-  // ponytail: add a pick-the-right-one step here if top matches still go wrong often.
-  async function add() {
-    setBusy(true)
-    let unlocated = 0
-    let failed = 0
-    let searchDown = false
-    for (const place of p.places) {
-      const q = new URLSearchParams({ q: place.name })
-      if (bias) {
-        q.set('lat', String(bias.lat))
-        q.set('lng', String(bias.lng))
-      }
-      let match: Place | undefined
-      try {
-        match = (await api<Place[]>(`/api/places/search?${q}`))[0]
-        if (match && cities.length && !cities.some((c) => km(c, match!) <= NEAR_TRIP_KM)) match = undefined
-      } catch {
-        searchDown = true // still add it by name; the traveler can locate it later
-      }
-      if (!match) unlocated++
-      await api(`/api/trips/${trip.id}/destinations`, {
-        method: 'POST',
-        body: {
-          name: match?.name ?? place.name, address: match?.address ?? null, lat: match?.lat ?? null, lng: match?.lng ?? null,
-          providerId: match?.providerId ?? null, notes: null, durationMin: 60, startTime: null, locked: false, flexibility: 'FLEXIBLE',
-          dayIndex: place.day_number > 0 && place.day_number <= trip.dayCount ? place.day_number - 1 : null,
-        },
-      }).catch(() => failed++)
+  /** A name-only pick is looked up near the trip; a match far from every trip city is a namesake, so it's skipped. */
+  async function locate(name: string): Promise<Place | undefined> {
+    const q = new URLSearchParams({ q: name })
+    if (bias) {
+      q.set('lat', String(bias.lat))
+      q.set('lng', String(bias.lng))
     }
-    qc.invalidateQueries({ queryKey: ['destinations', trip.id] })
-    setBusy(false)
-    setDone([
-      `Added ${p.places.length - failed} of ${p.places.length}.`,
-      unlocated ? `${unlocated} without a map location yet${searchDown ? ' (place search is unavailable right now)' : ''}.` : '',
-      failed ? `${failed} already in the trip or couldn't be added.` : '',
-    ].filter(Boolean).join(' '))
+    const match = (await api<Place[]>(`/api/places/search?${q}`).catch(() => []))[0]
+    return match && (!cities.length || cities.some((c) => km(c, match) <= NEAR_TRIP_KM)) ? match : undefined
   }
 
+  useEffect(() => {
+    if (started.current || !canEdit(trip)) return
+    started.current = true // once per proposal, even when React mounts it twice in development
+    ;(async () => {
+      const ids: string[] = []
+      let unlocated = 0
+      let failed = 0
+      for (const x of p.places) {
+        const at = x.lat != null ? { ...x, lat: x.lat, lng: x.lng! } : await locate(x.name)
+        const day = x.day_number > 0 && x.day_number <= trip.dayCount ? x.day_number - 1 : null
+        await api<{ id: string }>(`/api/trips/${trip.id}/destinations`, {
+          method: 'POST',
+          body: {
+            name: at?.name ?? x.name, address: at?.address || null, lat: at?.lat ?? null, lng: at?.lng ?? null,
+            providerId: at?.providerId ?? null, notes: null, durationMin: 60, startTime: null, locked: false, flexibility: 'FLEXIBLE',
+            dayIndex: day,
+          },
+        }).then((d) => { ids.push(d.id); if (!at) unlocated++ }, () => failed++)
+      }
+      refresh()
+      setAdded(ids)
+      setNote([unlocated ? `${unlocated} not on the map yet` : '', failed ? `${failed} already in the trip` : ''].filter(Boolean).join(' · '))
+    })()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function undo() {
+    const ids = added ?? []
+    setAdded([])
+    await Promise.all(ids.map((id) => api(`/api/trips/${trip.id}/destinations/${id}`, { method: 'DELETE' }).catch(() => {})))
+    refresh()
+    setNote('Removed.')
+  }
+
+  const onDays = p.places.filter((x) => x.day_number > 0).length
   return (
     <div className="card" style={{ padding: 12, borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14 }}>
-        {p.places.map((x, i) => <li key={i}>{x.name}{x.day_number > 0 ? ` · Day ${x.day_number}` : ' · idea'}</li>)}
-      </ul>
-      {done
-        ? <span role="status" style={{ fontSize: 13, fontWeight: 600 }}>{done}</span>
-        : <button className="btn btn-primary" disabled={!canEdit(trip) || busy} onClick={add}>
-            {canEdit(trip) ? `Add ${p.places.length} ${p.places.length === 1 ? 'place' : 'places'}` : 'Only editors can add'}
-          </button>}
+      <span style={{ fontSize: 14 }}>
+        {p.places.slice(0, SHOWN).map((x) => x.name).join(', ')}
+        {p.places.length > SHOWN && <span className="muted"> and {p.places.length - SHOWN} more</span>}
+      </span>
+      {!canEdit(trip)
+        ? <span className="muted" style={{ fontSize: 13 }}>Only editors can add places.</span>
+        : added === null
+          ? <span role="status" className="muted" style={{ fontSize: 13 }}>Adding…</span>
+          : (
+            <div className="spread" style={{ gap: 8 }}>
+              <span role="status" style={{ fontSize: 13, fontWeight: 600 }}>
+                {added.length ? `Added ${added.length} to Destinations${onDays ? ` · ${onDays} on days` : ''}` : ''}
+                {note && `${added.length ? ' · ' : ''}${note}`}
+              </span>
+              <span className="row" style={{ gap: 6 }}>
+                <Link className="btn btn-soft" to={`/trips/${trip.id}/destinations`}>View</Link>
+                {added.length > 0 && <button className="btn btn-soft" onClick={undo}>Undo</button>}
+              </span>
+            </div>
+          )}
     </div>
   )
 }
@@ -102,10 +126,8 @@ function OptimizeProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type
   )
 }
 
-/** On-demand trip copilot. Anything that would change the trip comes back as a button the traveler presses. */
-export function AssistantDrawer({ trip, onClose, onDiscover }: {
-  trip: Trip; onClose: () => void; onDiscover: (query: string, dayIndex: number | null) => void
-}) {
+/** On-demand trip copilot. Places it picks are added right away (with Undo); day rearrangements stay a preview. */
+export function AssistantDrawer({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -128,6 +150,7 @@ export function AssistantDrawer({ trip, onClose, onDiscover }: {
       await readEvents(`/api/trips/${trip.id}/assistant`, (name, data) => {
         if (name === 'text') patch((m) => ({ ...m, content: m.content + JSON.parse(data).text }))
         if (name === 'proposal') patch((m) => ({ ...m, proposals: [...m.proposals, JSON.parse(data)] }))
+        if (name === 'status') patch((m) => ({ ...m, status: JSON.parse(data).text }))
         if (name === 'error') setError(JSON.parse(data).message)
       }, ctrl.current.signal, { messages: recent(history) })
     } catch (e) {
@@ -162,7 +185,7 @@ export function AssistantDrawer({ trip, onClose, onDiscover }: {
       <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {msgs.length === 0 && (
           <>
-            <p className="muted" style={{ margin: 0, fontSize: 14 }}>Paste a list of places, ask whether something fits, or ask for a lighter day. I suggest; you decide.</p>
+            <p className="muted" style={{ margin: 0, fontSize: 14 }}>Ask for ideas in a city, paste a list of places, or ask for a lighter day. Places I find go straight into Destinations, and you can undo.</p>
             <div className="row" style={{ gap: 8 }}>
               {SUGGESTED.map((s) => <button key={s} className="btn btn-soft" style={{ borderRadius: 999 }} onClick={() => send(s)}>{s}</button>)}
             </div>
@@ -171,18 +194,11 @@ export function AssistantDrawer({ trip, onClose, onDiscover }: {
         {msgs.map((m, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: m.role === 'user' ? 'flex-end' : 'stretch' }}>
             {(m.content || (busy && i === msgs.length - 1)) && (
-              <div className={m.role === 'user' ? 'bubble-user' : 'bubble-ai'}>{m.content || 'Thinking…'}</div>
+              <div className={m.role === 'user' ? 'bubble-user' : 'bubble-ai'}>{m.content || m.status || 'Thinking…'}</div>
             )}
             {m.proposals.map((p, j) => p.type === 'places'
               ? <PlacesProposal key={j} trip={trip} p={p} />
-              : p.type === 'optimize'
-                ? <OptimizeProposal key={j} trip={trip} p={p} />
-                : (
-                  <button key={j} className="btn btn-primary"
-                    onClick={() => onDiscover(p.query, p.day_number > 0 && p.day_number <= trip.dayCount ? p.day_number - 1 : null)}>
-                    Show suggestions: {p.query}
-                  </button>
-                ))}
+              : <OptimizeProposal key={j} trip={trip} p={p} />)}
           </div>
         ))}
         {error && <div role="alert" className="error">{error}</div>}

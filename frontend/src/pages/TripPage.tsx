@@ -445,7 +445,6 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
 export function TripPage({ tab }: { tab: Tab }) {
   const { tripId } = useParams()
   const [askOpen, setAskOpen] = useState(false)
-  const [chatDiscover, setChatDiscover] = useState<DiscoverAsk | null>(null)
   useTripLive(tripId)
   const trip = useQuery({ queryKey: ['trip', tripId], queryFn: () => api<Trip>(`/api/trips/${tripId}`) })
   const destinations = useQuery({ queryKey: ['destinations', tripId], queryFn: () => api<Destination[]>(`/api/trips/${tripId}/destinations`) })
@@ -469,10 +468,8 @@ export function TripPage({ tab }: { tab: Tab }) {
       {tab === 'members' && <MembersTab trip={trip.data} />}
       {tab === 'activity' && <ActivityTab trip={trip.data} />}
       {askOpen
-        ? <AssistantDrawer trip={trip.data} onClose={() => setAskOpen(false)}
-            onDiscover={(query, dayIndex) => setChatDiscover({ query, dayIndex, context: dayIndex === null ? 'Anywhere in the trip' : `Near Day ${dayIndex + 1}` })} />
+        ? <AssistantDrawer trip={trip.data} onClose={() => setAskOpen(false)} />
         : <AskAiButton onClick={() => setAskOpen(true)} />}
-      {chatDiscover && <DiscoverSheet trip={trip.data} ask={chatDiscover} onClose={() => setChatDiscover(null)} />}
     </>
   )
 }
