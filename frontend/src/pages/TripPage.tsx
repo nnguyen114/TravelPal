@@ -467,7 +467,7 @@ export function TripPage({ tab }: { tab: Tab }) {
       {tab === 'suggestions' && <SuggestionsTab trip={trip.data} destinations={destinations.data} />}
       {tab === 'members' && <MembersTab trip={trip.data} />}
       {tab === 'activity' && <ActivityTab trip={trip.data} />}
-      <AssistantDrawer trip={trip.data} open={askOpen} onClose={() => setAskOpen(false)} />
+      <AssistantDrawer key={trip.data.id} trip={trip.data} open={askOpen} onClose={() => setAskOpen(false)} />
       {!askOpen && <AskAiButton onClick={() => setAskOpen(true)} />}
     </>
   )

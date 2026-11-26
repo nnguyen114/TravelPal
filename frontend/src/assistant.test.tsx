@@ -117,6 +117,26 @@ it('looks a place up only in the city the assistant named', async () => {
   expect(calls.filter((c) => c.url.includes('/places/search')).map((c) => c.url)).toEqual([expect.stringContaining('Tsukiji')])
 })
 
+it('tells failed saves apart from duplicates, and keeps a named city to its own radius', async () => {
+  setup(() => sse(['proposal', { type: 'places', places: [
+    { name: 'Dup', day_number: 0 }, { name: 'Broken', day_number: 0 }, { name: 'Far Temple', day_number: 0, city: 'Tokyo' }] }], ['done', {}]),
+  'OWNER', {
+    'POST /api/trips/t1/destinations': (b) => {
+      const name = (b as { name: string }).name
+      if (name === 'Dup') return json(409, { detail: 'dup' })
+      if (name === 'Broken') return json(500, { detail: 'boom' })
+      return json(201, { id: `d-${name}`, version: 0, ...(b as object) })
+    },
+    // About 100 km from Tokyo: near enough for the trip, too far for a place the assistant said is in Tokyo.
+    'GET /api/places/search': (_, url) => json(200, url.includes('Far')
+      ? [{ name: 'Far Temple', address: 'Gunma', lat: 36.39, lng: 139.06, providerId: 'osm:F' }] : []),
+  })
+  renderAt('/trips/t1', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
+  await userEvent.type(screen.getByLabelText('Message the assistant'), 'Add these{Enter}')
+  expect(await screen.findByText(/Added 1 to Destinations · 1 not on the map yet · 1 already in the trip · 1 couldn't be saved/)).toBeInTheDocument()
+})
+
 it('says so when the reply is cut off before it finishes', async () => {
   setup(() => sse(['status', { text: 'Finding food in Tokyo…' }]))
   renderAt('/trips/t1', routes)

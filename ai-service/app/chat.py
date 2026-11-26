@@ -97,6 +97,7 @@ How to reply
   a visitor would know (major sights, famous markets and food spots) and skip generic shops, statues and chains.
   You may also add a famous landmark by name (no ref, but give its city) if you're sure it exists.
   A pasted list: add_places directly.
+  If they say not to add anything ("just suggest", "don't add yet"), answer in text and don't call add_places.
   "Make day 3 calmer": propose_optimization. "Can X fit Thursday?": check_fit.
 - When they ask for a day-by-day plan, give each place the day_number of its city's days (see <trip>); otherwise
   add them as ideas (day_number 0). Order within a day is handled by the optimizer, not you.
@@ -261,9 +262,11 @@ async def chat_events(req: ChatRequest, client: anthropic.AsyncAnthropic | None 
             # Something on the wire right away each round: the reply waits for the whole round, and a silent
             # connection is one that proxies and timeouts cut.
             yield sse("status", {"text": "Thinking…" if round_ == 0 else "Working on it…"})
+            # The last round may not call tools, so every turn ends with a reply the traveler sees.
+            last = {"tool_choice": {"type": "none"}} if round_ == MAX_TOOL_ROUNDS - 1 else {}
             async with client.beta.messages.stream(
                 model=MODEL, max_tokens=8000, system=system, messages=messages, tools=TOOLS,
-                output_config={"effort": "low"}, cache_control={"type": "ephemeral"}, **FALLBACK,
+                output_config={"effort": "low"}, cache_control={"type": "ephemeral"}, **FALLBACK, **last,
             ) as stream:
                 resp = await stream.get_final_message()
             if resp.stop_reason == "refusal":

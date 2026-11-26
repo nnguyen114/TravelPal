@@ -20,6 +20,8 @@ type Msg = { role: 'user' | 'assistant'; content: string; proposals: Proposal[];
 const MAX_MESSAGES = 40
 /** A search match farther than this from every trip city is a different place with the same name. */
 const NEAR_TRIP_KM = 300
+/** With a named city the limit is the AI service's own (NEAR_CITY_KM), so the app never pins a place it rejected. */
+const NEAR_CITY_KM = 50
 /** Names listed in an added-places card; the rest are counted (they're all in Destinations). */
 const SHOWN = 6
 export function recent(history: Msg[]) {
@@ -64,7 +66,8 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
       q.set('lng', String(near[0].lng))
     }
     const match = (await api<Place[]>(`/api/places/search?${q}`).catch(() => []))[0]
-    return match && (!near.length || near.some((c) => km(c, match) <= NEAR_TRIP_KM)) ? match : undefined
+    const limit = city ? NEAR_CITY_KM : NEAR_TRIP_KM
+    return match && (!near.length || near.some((c) => km(c, match) <= limit)) ? match : undefined
   }
 
   useEffect(() => {
@@ -73,6 +76,7 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
     ;(async () => {
       const ids: Added[] = []
       let unlocated = 0
+      let dupes = 0
       let failed = 0
       for (const x of p.places) {
         if (gone.current) return // left the trip: stop adding; what's already added stays in Destinations
@@ -85,11 +89,13 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
             providerId: at?.providerId ?? null, notes: null, durationMin: 60, startTime: null, locked: false, flexibility: 'FLEXIBLE',
             dayIndex: day,
           },
-        }).then((d) => { ids.push({ id: d.id, version: d.version }); if (!at) unlocated++ }, () => failed++)
+        }).then((d) => { ids.push({ id: d.id, version: d.version }); if (!at) unlocated++ },
+          (e) => (e instanceof ApiError && e.status === 409 ? dupes++ : failed++))
       }
       refresh()
       setAdded(ids)
-      setNote([unlocated ? `${unlocated} not on the map yet` : '', failed ? `${failed} already in the trip` : ''].filter(Boolean).join(' · '))
+      setNote([unlocated ? `${unlocated} not on the map yet` : '', dupes ? `${dupes} already in the trip` : '',
+        failed ? `${failed} couldn't be saved` : ''].filter(Boolean).join(' · '))
     })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -185,3 +185,13 @@ def test_viewers_get_no_places_to_add():
     text_, proposal = chat.run_tool(TRIP, "add_places", {"places": [{"name": "Tsukiji", "day_number": 2}]}, can_edit=False)
     assert proposal is None and "only view" in text_
     assert chat.ChatRequest.model_validate({"trip": {}, "messages": [{"role": "user", "content": "hi"}], "canEdit": False}).can_edit is False
+
+
+@pytest.mark.anyio
+async def test_the_last_round_must_reply_instead_of_calling_tools():
+    fit = tool_use("c1", "check_fit", {"day_number": 1, "minutes": 60})
+    fake = FakeAsyncClient(*[message(fit, stop_reason="tool_use") for _ in range(chat.MAX_TOOL_ROUNDS - 1)],
+                           message(text("Day 1 has room.")))
+    events = await collect(chat.chat_events(req(), fake))
+    assert [c.get("tool_choice") for c in fake.calls] == [None] * (chat.MAX_TOOL_ROUNDS - 1) + [{"type": "none"}]
+    assert ("text", {"text": "Day 1 has room."}) in events
