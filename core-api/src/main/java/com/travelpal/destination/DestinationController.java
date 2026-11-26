@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -74,8 +75,9 @@ public class DestinationController {
 
     @DeleteMapping("/destinations/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    void delete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId, @PathVariable UUID id) {
-        service.delete(Auth.userId(jwt), tripId, id);
+    void delete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId, @PathVariable UUID id,
+                @RequestParam(required = false) Long version) {
+        service.delete(Auth.userId(jwt), tripId, id, version);
     }
 
     @PostMapping("/events/{eventId}/undo")

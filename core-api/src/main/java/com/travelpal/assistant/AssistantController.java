@@ -56,9 +56,9 @@ public class AssistantController {
     ResponseEntity<ResponseBodyEmitter> chat(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID tripId,
                                                @Valid @RequestBody ChatRequest req) throws InterruptedException {
         UUID user = Auth.userId(jwt);
-        access.require(tripId, user, TripRole.VIEWER);
+        boolean canEdit = access.require(tripId, user, TripRole.VIEWER).atLeast(TripRole.EDITOR);
         quota.spend(user, AiQuota.Kind.ASSISTANT);
-        String body = json.writeValueAsString(Map.of("trip", snapshots.build(user, tripId).data(), "messages", req.messages()));
+        String body = json.writeValueAsString(Map.of("trip", snapshots.build(user, tripId).data(), "messages", req.messages(), "canEdit", canEdit));
         InputStream upstream = ai.post("/internal/chat", body, user, Duration.ofMinutes(5), "The assistant");
         // Each chunk is sent (and flushed) as it arrives, so "Thinking…" and search progress show up live. A
         // StreamingResponseBody here held the whole reply until it finished.

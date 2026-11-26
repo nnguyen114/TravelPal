@@ -59,6 +59,7 @@ class AssistantApiTest extends IntegrationTest {
         assertThat((String) JsonPath.read(seenBody.get(), "$.trip.trip.name")).isEqualTo("Japan");
         assertThat((String) JsonPath.read(seenBody.get(), "$.trip.destinations[0].startTime")).isEqualTo("09:30");
         assertThat((String) JsonPath.read(seenBody.get(), "$.messages[0].content")).isEqualTo("How full is day 1?");
+        assertThat((Boolean) JsonPath.read(seenBody.get(), "$.canEdit")).isTrue();
 
         String jwks = mvc.perform(get("/.well-known/internal-jwks.json")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         assertThat(jwks).doesNotContain("\"d\"");  // public key only

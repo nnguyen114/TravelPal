@@ -29,7 +29,7 @@ function setup(stream: () => Response, role: 'OWNER' | 'VIEWER' = 'OWNER', extra
       ? [{ name: 'Tsukiji Outer Market', address: 'Chuo, Tokyo', lat: 35.66, lng: 139.77, providerId: 'osm:N1' }]
       : url.includes('Tiny') ? [{ name: 'Tiny Bar', address: 'Paris', lat: 48.86, lng: 2.35, providerId: 'osm:N2' }] : []),
     'POST /api/trips/t1/destinations': (b) => ((b as { name: string }).name === 'Dup'
-      ? json(409, { detail: 'dup' }) : json(201, { id: `d-${(b as { name: string }).name}`, ...(b as object) })),
+      ? json(409, { detail: 'dup' }) : json(201, { id: `d-${(b as { name: string }).name}`, version: 0, ...(b as object) })),
     'DELETE /api/trips/t1/destinations/d-Tsukiji Outer Market': () => new Response(null, { status: 204 }),
     'DELETE /api/trips/t1/destinations/d-Tiny bar': () => new Response(null, { status: 204 }),
     'DELETE /api/trips/t1/destinations/d-Ben Thanh Market': () => new Response(null, { status: 204 }),
@@ -62,7 +62,7 @@ it('adds the places it picks straight away, with Undo', async () => {
   expect(screen.getByRole('link', { name: 'View' })).toHaveAttribute('href', '/trips/t1/destinations')
 
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
-  await waitFor(() => expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url.split('/').pop())).toEqual(
+  await waitFor(() => expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url.split('/').pop()!.split('?')[0])).toEqual(
     ['d-Ben Thanh Market', 'd-Tsukiji Outer Market', 'd-Tiny bar']))
   expect(await screen.findByText('Removed.')).toBeInTheDocument()
 })
@@ -90,8 +90,39 @@ it('keeps places whose delete failed so Undo can be retried', async () => {
   expect(await screen.findByText(/Couldn't remove 1\. Try Undo again\./)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
   expect(await screen.findByText('Removed.')).toBeInTheDocument()
-  expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url.split('/').pop())).toEqual(
+  expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url.split('/').pop()!.split('?')[0])).toEqual(
     ['d-Tsukiji Outer Market', 'd-Tiny bar', 'd-Tiny bar'])
+})
+
+it('keeps a place someone edited since instead of undoing over it', async () => {
+  const calls = setup(() => sse(['proposal', { type: 'places', places: [{ name: 'Tsukiji', day_number: 1 }, { name: 'Tiny bar', day_number: 0 }] }], ['done', {}]),
+    'OWNER', { 'DELETE /api/trips/t1/destinations/d-Tiny bar': () => json(409, { detail: 'It changed since' }) })
+  renderAt('/trips/t1', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
+  await userEvent.type(screen.getByLabelText('Message the assistant'), 'Plan my days{Enter}')
+  await userEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+  expect(await screen.findByText('Kept 1 edited since')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+  expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url)).toContain('/api/trips/t1/destinations/d-Tiny bar?version=0')
+})
+
+it('looks a place up only in the city the assistant named', async () => {
+  const calls = setup(() => sse(['proposal', { type: 'places', places: [
+    { name: 'Tsukiji', day_number: 1, city: 'Tokyo' }, { name: 'Ichiran', day_number: 0, city: 'Osaka' }] }], ['done', {}]))
+  renderAt('/trips/t1', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
+  await userEvent.type(screen.getByLabelText('Message the assistant'), 'Plan my days{Enter}')
+  expect(await screen.findByText(/Added 2 to Destinations/)).toBeInTheDocument()
+  // Osaka isn't a trip city, so Ichiran isn't searched near Tokyo; it's added by name for the traveler to place.
+  expect(calls.filter((c) => c.url.includes('/places/search')).map((c) => c.url)).toEqual([expect.stringContaining('Tsukiji')])
+})
+
+it('says so when the reply is cut off before it finishes', async () => {
+  setup(() => sse(['status', { text: 'Finding food in Tokyo…' }]))
+  renderAt('/trips/t1', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
+  await userEvent.type(screen.getByLabelText('Message the assistant'), 'food{Enter}')
+  expect(await screen.findByRole('alert')).toHaveTextContent('The reply was cut off. Try again.')
 })
 
 it('shows what it is doing while it searches', async () => {

@@ -67,6 +67,14 @@ class DestinationApiTest extends IntegrationTest {
     }
 
     @Test
+    void aVersionedDeleteKeepsAPlaceChangedSince() throws Exception {
+        String a = add("A", "0");
+        mvc.perform(json(put(base + "/destinations/" + a), who, "{\"name\":\"A2\",\"version\":0}")).andExpect(status().isOk());
+        mvc.perform(auth(delete(base + "/destinations/" + a + "?version=0"), who)).andExpect(status().isConflict());
+        mvc.perform(auth(delete(base + "/destinations/" + a + "?version=1"), who)).andExpect(status().isNoContent());
+    }
+
+    @Test
     void travelersCanSetBestTimesAndDayTrips() throws Exception {
         String id = read(mvc.perform(json(post(base + "/destinations"), who,
                 "{\"name\":\"Golden Gai\",\"visitAfter\":\"20:00\",\"visitBefore\":\"23:30\"}"))

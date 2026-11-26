@@ -177,7 +177,7 @@ public class ProposalService {
                 case ADD -> destinations.add(userId, tripId, new DestinationService.Input(c.name(), c.address(), c.lat(), c.lng(),
                     c.providerId(), null, c.durationMin(), c.dayIndex(), c.startTime(), false, null, null, null, false));
                 case MOVE -> destinations.move(userId, tripId, c.destinationId(), c.destinationVersion(), c.dayIndex(), c.startTime());
-                case REMOVE -> destinations.delete(userId, tripId, c.destinationId());
+                case REMOVE -> destinations.delete(userId, tripId, c.destinationId(), null);
             }
         }
         p.settle(Proposal.Status.MERGED, userId);

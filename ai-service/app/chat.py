@@ -40,6 +40,7 @@ class Message(BaseModel):
 
 class ChatRequest(BaseModel):
     trip: dict
+    can_edit: bool = Field(True, alias="canEdit")  # viewers can't add places; the app checks again on every write
     messages: list[Message] = Field(min_length=1, max_length=40)
 
 
@@ -99,7 +100,7 @@ How to reply
   "Make day 3 calmer": propose_optimization. "Can X fit Thursday?": check_fit.
 - When they ask for a day-by-day plan, give each place the day_number of its city's days (see <trip>); otherwise
   add them as ideas (day_number 0). Order within a day is handled by the optimizer, not you.
-- Your text before a tool call is not shown. After tools, reply once, briefly: what you added (counts per city or
+- Your text before a tool call is not shown. After tools, reply once, briefly: what you picked (counts per city or
   day) and one useful next step, such as Optimize Trip to order the days. Never describe buttons or the app's
   screens, and never repeat what you already said.
 - If the request is unclear (which city? which day?), ask one short question instead.
@@ -198,6 +199,11 @@ def locate(idea: PlaceIdea, found: dict) -> dict | None:
     return {k: match[k] for k in ("name", "lat", "lng", "providerId", "address")}
 
 
+def unlocated(idea: PlaceIdea) -> dict:
+    """A place that couldn't be pinned down. Its city goes along so the app looks only there, never in another trip city."""
+    return {"name": idea.name, **({"city": idea.city} if idea.city else {})}
+
+
 def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
@@ -207,7 +213,7 @@ def within_trip(trip: dict, day_number: int) -> None:
         raise ValueError(f"day_number {day_number} is past the last day; the trip has {trip['trip']['dayCount']} days")
 
 
-def run_tool(trip: dict, name: str, raw: object, found: dict | None = None) -> tuple[str, dict | None]:
+def run_tool(trip: dict, name: str, raw: object, found: dict | None = None, can_edit: bool = True) -> tuple[str, dict | None]:
     """Returns (tool_result text, event payload or None). Raises ValueError on bad input.
 
     found: this message's search state: "places" by id (p1, p2, ...), "cities" by name, "lookups" made.
@@ -217,6 +223,8 @@ def run_tool(trip: dict, name: str, raw: object, found: dict | None = None) -> t
         return check_fit(trip, CheckFit.model_validate(raw)), None
     if name == "add_places":
         p = AddPlaces.model_validate(raw)
+        if not can_edit:
+            return "Nothing added: the traveler can only view this trip. Suggest the places by name; an editor can add them.", None
         for idea in p.places:
             within_trip(trip, idea.day_number)
         # The same place twice (in the trip already, or repeated in the list) would be a duplicate the app rejects.
@@ -230,9 +238,11 @@ def run_tool(trip: dict, name: str, raw: object, found: dict | None = None) -> t
         if not fresh:
             return f"Nothing added.{note}", None
         # A ref carries the searched place's real location; a named place is looked up near its city here, and
-        # anything still unresolved goes by name for the app to look up near the trip.
-        added = [{**(found.get("places", {}).get(i.ref or "") or locate(i, found) or {"name": i.name}), "day_number": i.day_number} for i in fresh]
-        return f"Added {len(added)} to the trip (the traveler can undo).{note}", {"type": "places", "places": added}
+        # anything still unresolved goes by name (with its city, if given) for the app to look up.
+        picks = [{**(found.get("places", {}).get(i.ref or "") or locate(i, found) or unlocated(i)), "day_number": i.day_number} for i in fresh]
+        # The app makes the writes and shows what actually saved, so this claims only that they were sent.
+        return (f"Sent {len(picks)} to the app, which adds them to Destinations and shows the traveler what saved (with Undo).{note}",
+                {"type": "places", "places": picks})
     if name == "propose_optimization":
         p = ProposeOptimization.model_validate(raw)
         within_trip(trip, p.day_number)
@@ -277,7 +287,7 @@ async def chat_events(req: ChatRequest, client: anthropic.AsyncAnthropic | None 
                         yield sse("status", {"text": f"Finding {', '.join(args.kinds)} in {args.city}…"})
                         text, event = await asyncio.to_thread(search_places, args, found), None
                     else:  # add_places may look places up, so it runs off the event loop too
-                        text, event = await asyncio.to_thread(run_tool, req.trip, b.name, b.input, found)
+                        text, event = await asyncio.to_thread(run_tool, req.trip, b.name, b.input, found, req.can_edit)
                     if event:
                         yield sse("proposal", event)
                     results.append({"type": "tool_result", "tool_use_id": b.id, "content": text})

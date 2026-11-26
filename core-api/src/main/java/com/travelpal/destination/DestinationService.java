@@ -111,9 +111,13 @@ public class DestinationService {
     }
 
     @Transactional
-    public void delete(UUID userId, UUID tripId, UUID id) {
+    /** With a {@code version}, deletes only if nobody changed the place since (the assistant's Undo relies on this). */
+    public void delete(UUID userId, UUID tripId, UUID id, Long version) {
         access.require(tripId, userId, TripRole.EDITOR);
         Destination d = find(tripId, id);
+        if (version != null && version != d.getVersion()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "It changed since; undo would discard newer edits");
+        }
         repo.delete(d);
         history.record(tripId, userId, "DESTINATION_REMOVED", "removed " + d.getName(), Snapshot.of(d), null);
     }

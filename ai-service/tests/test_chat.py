@@ -76,13 +76,16 @@ async def test_searches_then_adds_real_places_and_says_it_once(monkeypatch):
     assert ("proposal", {"type": "places", "places": [
         {"name": "Da Lat Market", "lat": 11.943, "lng": 108.437, "providerId": "g:m1", "address": "Ward 1, Da Lat", "day_number": 2},
         {"name": "Hang Nga Crazy House", "lat": 11.935, "lng": 108.431, "providerId": "g:ch", "address": "Da Lat", "day_number": 0},
-        {"name": "Golden Bridge", "day_number": 0},  # its only match is 1,000 km away: left for the traveler to locate
+        # Its only match is 1,000 km away: left unlocated, still tied to its city so the app never pins it elsewhere.
+        {"name": "Golden Bridge", "city": "Da Lat", "day_number": 0},
         {"name": "Pasted spot", "day_number": 1}]}) in events
     assert ("proposal", {"type": "optimize", "mode": "RELAXED", "day_number": 0, "instructions": "slow mornings"}) in events
     result = {r["tool_use_id"]: r for m in fake.calls[-1]["messages"] if m["role"] == "user" and isinstance(m["content"], list)
               for r in m["content"]}
     assert "p1 | Da Lat Market | markets · marketplace | Ward 1, Da Lat" in result["s1"]["content"]
     assert "doesn't fit" in result["c1"]["content"] and result["x1"]["is_error"]
+    # The app makes the writes, so the model is told they were sent, not that they saved.
+    assert result["a1"]["content"].startswith("Sent 4 to the app")
     # Preamble text from tool rounds is dropped: one reply, no repeats.
     assert [e for e in events if e[0] == "text"] == [("text", {"text": "Added 2 places in Da Lat. Optimize Trip will order the days."})]
 
@@ -176,3 +179,9 @@ def test_tools_reject_days_past_the_trip_and_skip_duplicates():
     assert "meiji jingu" in text_ and "TSUKIJI" in text_
     text_, proposal = chat.run_tool(TRIP, "add_places", {"places": [{"name": "Cat Street", "day_number": 1}]})
     assert proposal is None and text_.startswith("Nothing added")
+
+
+def test_viewers_get_no_places_to_add():
+    text_, proposal = chat.run_tool(TRIP, "add_places", {"places": [{"name": "Tsukiji", "day_number": 2}]}, can_edit=False)
+    assert proposal is None and "only view" in text_
+    assert chat.ChatRequest.model_validate({"trip": {}, "messages": [{"role": "user", "content": "hi"}], "canEdit": False}).can_edit is False

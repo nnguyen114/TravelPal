@@ -7,8 +7,10 @@ import { useOptimize } from './optimize'
 import { canEdit, km } from './trip'
 import type { Mode, Place, Trip } from './types'
 
-/** A place the assistant chose: from its own map search (with a location) or by name only (looked up here). */
-type Pick = { name: string; day_number: number; lat?: number; lng?: number; providerId?: string; address?: string }
+/** A place the assistant chose: from its own map search (with a location) or by name only (looked up here, in its city if given). */
+type Pick = { name: string; day_number: number; lat?: number; lng?: number; providerId?: string; address?: string; city?: string }
+/** What Undo needs: the version it was created at, so a place someone has edited since is kept. */
+type Added = { id: string; version: number }
 type Proposal =
   | { type: 'places'; places: Pick[] }
   | { type: 'optimize'; mode: Mode; day_number: number; instructions: string }
@@ -26,12 +28,18 @@ export function recent(history: Msg[]) {
   return last.map(({ role, content }) => ({ role, content: content || '…' }))
 }
 
+function undoFailure(e: unknown): 'removed' | 'kept' | 'failed' {
+  if (!(e instanceof ApiError)) return 'failed'
+  if (e.status === 404) return 'removed'
+  return e.status === 409 ? 'kept' : 'failed'
+}
+
 const SUGGESTED = ['Find food and sights for my trip', 'How full is Day 1?', 'Make Day 2 lighter']
 
 /** Adds the assistant's places as soon as they arrive (editors only); the traveler keeps or undoes them. */
 function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 'places' }> }) {
   const qc = useQueryClient()
-  const [added, setAdded] = useState<string[] | null>(null)
+  const [added, setAdded] = useState<Added[] | null>(null)
   const [note, setNote] = useState('')
   const [undoing, setUndoing] = useState(false)
   const started = useRef(false)
@@ -41,39 +49,43 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
     return () => { gone.current = true }
   }, [])
   const cities = trip.cities.filter((c): c is typeof c & { lat: number; lng: number } => c.lat != null && c.lng != null)
-  const bias = cities[0]
   const refresh = () => qc.invalidateQueries({ queryKey: ['destinations', trip.id] })
 
-  /** A name-only pick is looked up near the trip; a match far from every trip city is a namesake, so it's skipped. */
-  async function locate(name: string): Promise<Place | undefined> {
+  /**
+   * A name-only pick is looked up near the trip, or only near its own city when the assistant named one (a branch
+   * in another trip city is the wrong place). A match far from those cities is a namesake, so it's skipped.
+   */
+  async function locate(name: string, city?: string): Promise<Place | undefined> {
+    const near = city ? cities.filter((c) => c.name.toLowerCase().includes(city.toLowerCase())) : cities
+    if (city && !near.length) return undefined
     const q = new URLSearchParams({ q: name })
-    if (bias) {
-      q.set('lat', String(bias.lat))
-      q.set('lng', String(bias.lng))
+    if (near[0]) {
+      q.set('lat', String(near[0].lat))
+      q.set('lng', String(near[0].lng))
     }
     const match = (await api<Place[]>(`/api/places/search?${q}`).catch(() => []))[0]
-    return match && (!cities.length || cities.some((c) => km(c, match) <= NEAR_TRIP_KM)) ? match : undefined
+    return match && (!near.length || near.some((c) => km(c, match) <= NEAR_TRIP_KM)) ? match : undefined
   }
 
   useEffect(() => {
     if (started.current || !canEdit(trip)) return
     started.current = true // once per proposal, even when React mounts it twice in development
     ;(async () => {
-      const ids: string[] = []
+      const ids: Added[] = []
       let unlocated = 0
       let failed = 0
       for (const x of p.places) {
         if (gone.current) return // left the trip: stop adding; what's already added stays in Destinations
-        const at = x.lat != null ? { ...x, lat: x.lat, lng: x.lng! } : await locate(x.name)
+        const at = x.lat != null ? { ...x, lat: x.lat, lng: x.lng! } : await locate(x.name, x.city)
         const day = x.day_number > 0 && x.day_number <= trip.dayCount ? x.day_number - 1 : null
-        await api<{ id: string }>(`/api/trips/${trip.id}/destinations`, {
+        await api<Added>(`/api/trips/${trip.id}/destinations`, {
           method: 'POST',
           body: {
             name: at?.name ?? x.name, address: at?.address || null, lat: at?.lat ?? null, lng: at?.lng ?? null,
             providerId: at?.providerId ?? null, notes: null, durationMin: 60, startTime: null, locked: false, flexibility: 'FLEXIBLE',
             dayIndex: day,
           },
-        }).then((d) => { ids.push(d.id); if (!at) unlocated++ }, () => failed++)
+        }).then((d) => { ids.push({ id: d.id, version: d.version }); if (!at) unlocated++ }, () => failed++)
       }
       refresh()
       setAdded(ids)
@@ -81,17 +93,22 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
     })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Only confirmed deletes leave the list (a 404 means it's already gone); the rest stay for another try. */
+  /**
+   * Deletes only places nobody has changed since (the server checks the version). A 404 means it's already gone;
+   * a 409 means someone edited it, so it's kept; any other failure stays listed for another try.
+   */
   async function undo() {
-    const ids = added ?? []
+    const all = added ?? []
     setUndoing(true)
-    const removed = await Promise.all(ids.map((id) => api(`/api/trips/${trip.id}/destinations/${id}`, { method: 'DELETE' })
-      .then(() => true, (e) => e instanceof ApiError && e.status === 404)))
-    const left = ids.filter((_, i) => !removed[i])
+    const outcome = await Promise.all(all.map((a) => api(`/api/trips/${trip.id}/destinations/${a.id}?version=${a.version}`, { method: 'DELETE' })
+      .then(() => 'removed', undoFailure)))
+    const left = all.filter((_, i) => outcome[i] === 'failed')
+    const kept = outcome.filter((o) => o === 'kept').length
     refresh()
     setAdded(left)
     setUndoing(false)
-    setNote(left.length ? `Couldn't remove ${left.length}. Try Undo again.` : 'Removed.')
+    setNote([kept ? `Kept ${kept} edited since` : '', left.length ? `Couldn't remove ${left.length}. Try Undo again.` : '']
+      .filter(Boolean).join(' · ') || 'Removed.')
   }
 
   const onDays = p.places.filter((x) => x.day_number > 0).length
@@ -161,13 +178,17 @@ export function AssistantDrawer({ trip, open, onClose }: { trip: Trip; open: boo
     setError(null)
     ctrl.current = new AbortController()
     const patch = (f: (m: Msg) => Msg) => setMsgs((all) => [...all.slice(0, -1), f(all[all.length - 1])])
+    let finished = false
     try {
       await readEvents(`/api/trips/${trip.id}/assistant`, (name, data) => {
+        if (name === 'done') finished = true
         if (name === 'text') patch((m) => ({ ...m, content: m.content + JSON.parse(data).text }))
         if (name === 'proposal') patch((m) => ({ ...m, proposals: [...m.proposals, JSON.parse(data)] }))
         if (name === 'status') patch((m) => ({ ...m, status: JSON.parse(data).text }))
         if (name === 'error') setError(JSON.parse(data).message)
       }, ctrl.current.signal, { messages: recent(history) })
+      // The stream always ends with done; without it the connection dropped mid-reply.
+      if (!finished && !ctrl.current.signal.aborted) setError('The reply was cut off. Try again.')
     } catch (e) {
       if (!ctrl.current.signal.aborted) setError((e as Error).message)
     } finally {
