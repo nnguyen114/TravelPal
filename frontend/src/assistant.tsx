@@ -85,9 +85,9 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
   async function undo() {
     const ids = added ?? []
     setUndoing(true)
-    const results = await Promise.allSettled(ids.map((id) => api(`/api/trips/${trip.id}/destinations/${id}`, { method: 'DELETE' })
-      .catch((e) => { if (!(e instanceof ApiError && e.status === 404)) throw e })))
-    const left = ids.filter((_, i) => results[i].status === 'rejected')
+    const removed = await Promise.all(ids.map((id) => api(`/api/trips/${trip.id}/destinations/${id}`, { method: 'DELETE' })
+      .then(() => true, (e) => e instanceof ApiError && e.status === 404)))
+    const left = ids.filter((_, i) => !removed[i])
     refresh()
     setAdded(left)
     setUndoing(false)
