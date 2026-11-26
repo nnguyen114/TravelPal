@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
-import { api, readEvents } from './api'
+import { api, ApiError, readEvents } from './api'
 import { CloseIcon, SparkleIcon } from './icons'
 import { useOptimize } from './optimize'
 import { canEdit, km } from './trip'
@@ -33,7 +33,13 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
   const qc = useQueryClient()
   const [added, setAdded] = useState<string[] | null>(null)
   const [note, setNote] = useState('')
+  const [undoing, setUndoing] = useState(false)
   const started = useRef(false)
+  const gone = useRef(false)
+  useEffect(() => {
+    gone.current = false
+    return () => { gone.current = true }
+  }, [])
   const cities = trip.cities.filter((c): c is typeof c & { lat: number; lng: number } => c.lat != null && c.lng != null)
   const bias = cities[0]
   const refresh = () => qc.invalidateQueries({ queryKey: ['destinations', trip.id] })
@@ -57,6 +63,7 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
       let unlocated = 0
       let failed = 0
       for (const x of p.places) {
+        if (gone.current) return // left the trip: stop adding; what's already added stays in Destinations
         const at = x.lat != null ? { ...x, lat: x.lat, lng: x.lng! } : await locate(x.name)
         const day = x.day_number > 0 && x.day_number <= trip.dayCount ? x.day_number - 1 : null
         await api<{ id: string }>(`/api/trips/${trip.id}/destinations`, {
@@ -74,12 +81,17 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
     })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Only confirmed deletes leave the list (a 404 means it's already gone); the rest stay for another try. */
   async function undo() {
     const ids = added ?? []
-    setAdded([])
-    await Promise.all(ids.map((id) => api(`/api/trips/${trip.id}/destinations/${id}`, { method: 'DELETE' }).catch(() => {})))
+    setUndoing(true)
+    const results = await Promise.allSettled(ids.map((id) => api(`/api/trips/${trip.id}/destinations/${id}`, { method: 'DELETE' })
+      .catch((e) => { if (!(e instanceof ApiError && e.status === 404)) throw e })))
+    const left = ids.filter((_, i) => results[i].status === 'rejected')
     refresh()
-    setNote('Removed.')
+    setAdded(left)
+    setUndoing(false)
+    setNote(left.length ? `Couldn't remove ${left.length}. Try Undo again.` : 'Removed.')
   }
 
   const onDays = p.places.filter((x) => x.day_number > 0).length
@@ -101,7 +113,7 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
               </span>
               <span className="row" style={{ gap: 6 }}>
                 <Link className="btn btn-soft" to={`/trips/${trip.id}/destinations`}>View</Link>
-                {added.length > 0 && <button className="btn btn-soft" onClick={undo}>Undo</button>}
+                {added.length > 0 && <button className="btn btn-soft" disabled={undoing} onClick={undo}>Undo</button>}
               </span>
             </div>
           )}
@@ -126,8 +138,11 @@ function OptimizeProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type
   )
 }
 
-/** On-demand trip copilot. Places it picks are added right away (with Undo); day rearrangements stay a preview. */
-export function AssistantDrawer({ trip, onClose }: { trip: Trip; onClose: () => void }) {
+/**
+ * On-demand trip copilot. Places it picks are added right away (with Undo); day rearrangements stay a preview.
+ * Closing only hides it, so a running add, its Undo and the chat are all still there when it reopens.
+ */
+export function AssistantDrawer({ trip, open, onClose }: { trip: Trip; open: boolean; onClose: () => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -168,7 +183,7 @@ export function AssistantDrawer({ trip, onClose }: { trip: Trip; onClose: () => 
   }
 
   return (
-    <aside aria-label="AI assistant" className="assistant">
+    <aside aria-label="AI assistant" className="assistant" hidden={!open}>
       <div className="spread" style={{ padding: '16px 18px', borderBottom: '1px solid #EFEDE7', flexWrap: 'nowrap' }}>
         <div className="row" style={{ flexWrap: 'nowrap' }}>
           <span style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

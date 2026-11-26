@@ -14,9 +14,11 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -45,9 +47,11 @@ public class OptimizeService {
     private final AiQuota quota;
     private final ApplicationEventPublisher events;
     private final JsonMapper json;
+    private final TransactionTemplate newTx;
 
     OptimizeService(OptimizationPreviewRepository previews, TripAccess access, TripService trips, TripSnapshot snapshots,
-                    DestinationService destinations, OptimizeQueue queue, AiQuota quota, ApplicationEventPublisher events, JsonMapper json) {
+                    DestinationService destinations, OptimizeQueue queue, AiQuota quota, ApplicationEventPublisher events, JsonMapper json,
+                    PlatformTransactionManager txManager) {
         this.previews = previews;
         this.access = access;
         this.trips = trips;
@@ -57,6 +61,9 @@ public class OptimizeService {
         this.quota = quota;
         this.events = events;
         this.json = json;
+        // After commit the request's transaction is finished, so the failure update needs its own.
+        this.newTx = new TransactionTemplate(txManager);
+        this.newTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @Transactional
@@ -92,13 +99,10 @@ public class OptimizeService {
             queue.send(e.body());
         } catch (RuntimeException ex) {
             log.error("Could not queue optimize job {}", e.previewId(), ex);
-            fail(e.previewId(), "Couldn't start the optimizer. Try again.");
+            // ponytail: a crash between commit and send still strands the preview; a transactional outbox fixes that if it bites.
+            newTx.executeWithoutResult(s -> previews.findById(e.previewId())
+                .ifPresent(p -> p.complete(OptimizationPreview.Status.FAILED, null, "Couldn't start the optimizer. Try again.")));
         }
-    }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void fail(UUID previewId, String error) {
-        previews.findById(previewId).ifPresent(p -> p.complete(OptimizationPreview.Status.FAILED, null, error));
     }
 
     /** Results are idempotent: duplicates or late answers for settled previews are ignored. */

@@ -19,7 +19,7 @@ function sse(...events: [string, unknown][]) {
   return new Response(events.map(([n, d]) => `event: ${n}\ndata: ${JSON.stringify(d)}\n\n`).join(''), { status: 200 })
 }
 
-function setup(stream: () => Response, role: 'OWNER' | 'VIEWER' = 'OWNER') {
+function setup(stream: () => Response, role: 'OWNER' | 'VIEWER' = 'OWNER', extra: Parameters<typeof mockApi>[0] = {}) {
   return mockApi({
     'GET /api/trips/t1': () => json(200, trip({ role })),
     'GET /api/trips/t1/destinations': () => json(200, []),
@@ -34,6 +34,7 @@ function setup(stream: () => Response, role: 'OWNER' | 'VIEWER' = 'OWNER') {
     'DELETE /api/trips/t1/destinations/d-Tiny bar': () => new Response(null, { status: 204 }),
     'DELETE /api/trips/t1/destinations/d-Ben Thanh Market': () => new Response(null, { status: 204 }),
     'POST /api/trips/t1/optimize': () => json(202, { id: 'p9', status: 'PENDING' }),
+    ...extra,
   })
 }
 
@@ -64,6 +65,33 @@ it('adds the places it picks straight away, with Undo', async () => {
   await waitFor(() => expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url.split('/').pop())).toEqual(
     ['d-Ben Thanh Market', 'd-Tsukiji Outer Market', 'd-Tiny bar']))
   expect(await screen.findByText('Removed.')).toBeInTheDocument()
+})
+
+it('keeps added places and their Undo when the drawer is closed and reopened', async () => {
+  const calls = setup(() => sse(['proposal', { type: 'places', places: [{ name: 'Tsukiji', day_number: 1 }] }], ['done', {}]))
+  renderAt('/trips/t1', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
+  await userEvent.type(screen.getByLabelText('Message the assistant'), 'Plan my days{Enter}')
+  await userEvent.click(screen.getByRole('button', { name: 'Close assistant' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+  expect(await screen.findByText('Removed.')).toBeInTheDocument()
+  expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(1)
+})
+
+it('keeps places whose delete failed so Undo can be retried', async () => {
+  let tries = 0
+  const calls = setup(() => sse(['proposal', { type: 'places', places: [{ name: 'Tsukiji', day_number: 1 }, { name: 'Tiny bar', day_number: 0 }] }], ['done', {}]),
+    'OWNER', { 'DELETE /api/trips/t1/destinations/d-Tiny bar': () => (tries++ ? new Response(null, { status: 204 }) : json(500, { detail: 'boom' })) })
+  renderAt('/trips/t1', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
+  await userEvent.type(screen.getByLabelText('Message the assistant'), 'Plan my days{Enter}')
+  await userEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+  expect(await screen.findByText(/Couldn't remove 1\. Try Undo again\./)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
+  expect(await screen.findByText('Removed.')).toBeInTheDocument()
+  expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url.split('/').pop())).toEqual(
+    ['d-Tsukiji Outer Market', 'd-Tiny bar', 'd-Tiny bar'])
 })
 
 it('shows what it is doing while it searches', async () => {
