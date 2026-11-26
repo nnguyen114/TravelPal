@@ -80,7 +80,7 @@ def _tool(name: str, description: str, model: type[BaseModel]) -> dict:
 TOOLS = [
     _tool("search_places", "Find real places of the given kinds in a city (current map data). Returns ids like p3 to "
           "pass to add_places. Use this for recommendations instead of naming places from memory.", SearchPlaces),
-    _tool("add_places", "Add places to the trip right away (the traveler can undo or move them later). Pass ref for "
+    _tool("add_places", "Show places the traveler can add to the trip with one tap (and undo or move later). Pass ref for "
           "places from search_places so they land on the map. day_number 0 = an idea with no day yet.", AddPlaces),
     _tool("propose_optimization", "Offer a preview that rearranges days (the traveler applies it). day_number 0 = the "
           "whole trip; instructions = their constraints in their words.", ProposeOptimization),
@@ -241,9 +241,8 @@ def run_tool(trip: dict, name: str, raw: object, found: dict | None = None, can_
         # A ref carries the searched place's real location; a named place is looked up near its city here, and
         # anything still unresolved goes by name (with its city, if given) for the app to look up.
         picks = [{**(found.get("places", {}).get(i.ref or "") or locate(i, found) or unlocated(i)), "day_number": i.day_number} for i in fresh]
-        # The app makes the writes and shows what actually saved, so this claims only that they were sent.
-        return (f"Sent {len(picks)} to the app, which adds them to Destinations and shows the traveler what saved (with Undo).{note}",
-                {"type": "places", "places": picks})
+        # Nothing is saved until the traveler taps Add; the app then shows what actually saved.
+        return f"Shown {len(picks)} to the traveler with an Add button; they decide.{note}", {"type": "places", "places": picks}
     if name == "propose_optimization":
         p = ProposeOptimization.model_validate(raw)
         within_trip(trip, p.day_number)

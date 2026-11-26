@@ -188,6 +188,16 @@ class OptimizeApiTest extends IntegrationTest {
     }
 
     @Test
+    void aPreviewWhoseJobNeverAnswersFailsAfterTheDeadline() throws Exception {
+        String id = request("{\"mode\":\"BALANCED\",\"scope\":\"TRIP\"}");
+        takeJob(id); // the job is lost: no answer ever comes
+        mvc.perform(auth(get(base + "/previews/" + id), who)).andExpect(jsonPath("$.status").value("PENDING"));
+        jdbc.update("update optimization_preview set created_at = now() - interval '16 minutes' where id = ?::uuid", id);
+        mvc.perform(auth(get(base + "/previews/" + id), who)).andExpect(jsonPath("$.status").value("FAILED"))
+            .andExpect(jsonPath("$.error").value("The optimizer didn't answer. Try again."));
+    }
+
+    @Test
     void validationAndAccess() throws Exception {
         mvc.perform(json(post(base + "/optimize"), who, "{\"mode\":\"BALANCED\",\"scope\":\"DAY\"}")).andExpect(status().isBadRequest());
         mvc.perform(json(post(base + "/optimize"), who, "{\"mode\":\"BALANCED\",\"scope\":\"DAY\",\"dayIndex\":9}")).andExpect(status().isBadRequest());

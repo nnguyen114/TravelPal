@@ -84,8 +84,8 @@ async def test_searches_then_adds_real_places_and_says_it_once(monkeypatch):
               for r in m["content"]}
     assert "p1 | Da Lat Market | markets · marketplace | Ward 1, Da Lat" in result["s1"]["content"]
     assert "doesn't fit" in result["c1"]["content"] and result["x1"]["is_error"]
-    # The app makes the writes, so the model is told they were sent, not that they saved.
-    assert result["a1"]["content"].startswith("Sent 4 to the app")
+    # Nothing saves until the traveler taps Add, so the model is told they were shown, not added.
+    assert result["a1"]["content"].startswith("Shown 4 to the traveler")
     # Preamble text from tool rounds is dropped: one reply, no repeats.
     assert [e for e in events if e[0] == "text"] == [("text", {"text": "Added 2 places in Da Lat. Optimize Trip will order the days."})]
 

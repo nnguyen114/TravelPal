@@ -21,6 +21,11 @@ def sqs(monkeypatch):
 def test_job_in_result_out(sqs):
     jobs, results = worker.queue_url(sqs, "jobs"), worker.queue_url(sqs, "results")
     assert worker.queue_url(sqs, "jobs") == jobs  # idempotent
+    # An existing queue (Terraform's, with its own settings) is looked up, never re-created.
+    def no_create(**_):
+        raise AssertionError("create_queue on an existing queue")
+    sqs.create_queue = no_create
+    assert worker.queue_url(sqs, "results") == results
     sqs.send_message(QueueUrl=jobs, MessageBody=json.dumps(JOB))
     sqs.send_message(QueueUrl=jobs, MessageBody=json.dumps({"previewId": "p2", "trip": {}}))
     assert worker.process_once(sqs, jobs, results, wait_seconds=0) == 2

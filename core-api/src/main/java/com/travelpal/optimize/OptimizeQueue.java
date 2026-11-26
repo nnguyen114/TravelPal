@@ -19,6 +19,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.Message;
+import software.amazon.awssdk.services.sqs.model.QueueDoesNotExistException;
 
 /**
  * SQS in both directions: jobs out to ai-service, results back on a long-polling virtual thread. Where there is no
@@ -56,9 +57,16 @@ public class OptimizeQueue {
         this.sqs = builder.build();
     }
 
-    /** Idempotent lookup; in AWS the queues (with DLQs) come from Terraform. */
+    /**
+     * A lookup: in AWS the queues (with DLQs) come from Terraform, and CreateQueue with different attributes is
+     * rejected. Only a local queue service (LocalStack) has none yet, so it's created there.
+     */
     private String url(String name) {
-        return sqs.createQueue(r -> r.queueName(name)).queueUrl();
+        try {
+            return sqs.getQueueUrl(r -> r.queueName(name)).queueUrl();
+        } catch (QueueDoesNotExistException e) {
+            return sqs.createQueue(r -> r.queueName(name)).queueUrl();
+        }
     }
 
     public void send(String body) {

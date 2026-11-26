@@ -19,6 +19,8 @@ function sse(...events: [string, unknown][]) {
   return new Response(events.map(([n, d]) => `event: ${n}\ndata: ${JSON.stringify(d)}\n\n`).join(''), { status: 200 })
 }
 
+const tapAdd = async () => userEvent.click(await screen.findByRole('button', { name: /^Add \d+ places?$/ }))
+
 function setup(stream: () => Response, role: 'OWNER' | 'VIEWER' = 'OWNER', extra: Parameters<typeof mockApi>[0] = {}) {
   return mockApi({
     'GET /api/trips/t1': () => json(200, trip({ role })),
@@ -38,7 +40,7 @@ function setup(stream: () => Response, role: 'OWNER' | 'VIEWER' = 'OWNER', extra
   })
 }
 
-it('adds the places it picks straight away, with Undo', async () => {
+it('adds the places it picks when the traveler taps Add, with Undo', async () => {
   const calls = setup(() => sse(['status', { text: 'Finding markets in Ho Chi Minh City…' }],
     ['proposal', { type: 'places', places: [
       // From the assistant's own map search: added at that location, no second lookup.
@@ -52,7 +54,10 @@ it('adds the places it picks straight away, with Undo', async () => {
   const sent = calls.find((c) => c.url.endsWith('/assistant'))!.body as { messages: { role: string; content: string }[] }
   expect(sent.messages).toEqual([{ role: 'user', content: 'Plan my days' }])
 
-  // No button to press: they're added as soon as they arrive.
+  // Nothing saves until the traveler taps Add.
+  expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/destinations'))).toBe(false)
+  expect(screen.getByText('2 on days, the rest as ideas')).toBeInTheDocument()
+  await tapAdd()
   expect(await screen.findByText(/Added 3 to Destinations · 2 on days · 1 not on the map yet · 1 already in the trip/)).toBeInTheDocument()
   const posts = calls.filter((c) => c.method === 'POST' && c.url.endsWith('/destinations')).map((c) => c.body)
   expect(posts[0]).toMatchObject({ name: 'Ben Thanh Market', lat: 10.772, dayIndex: 0, providerId: 'g:b' })
@@ -72,6 +77,7 @@ it('keeps added places and their Undo when the drawer is closed and reopened', a
   renderAt('/trips/t1', routes)
   await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
   await userEvent.type(screen.getByLabelText('Message the assistant'), 'Plan my days{Enter}')
+  await tapAdd()
   await userEvent.click(screen.getByRole('button', { name: 'Close assistant' }))
   await userEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Undo' }))
@@ -86,6 +92,7 @@ it('keeps places whose delete failed so Undo can be retried', async () => {
   renderAt('/trips/t1', routes)
   await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
   await userEvent.type(screen.getByLabelText('Message the assistant'), 'Plan my days{Enter}')
+  await tapAdd()
   await userEvent.click(await screen.findByRole('button', { name: 'Undo' }))
   expect(await screen.findByText(/Couldn't remove 1\. Try Undo again\./)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
@@ -100,6 +107,7 @@ it('keeps a place someone edited since instead of undoing over it', async () => 
   renderAt('/trips/t1', routes)
   await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
   await userEvent.type(screen.getByLabelText('Message the assistant'), 'Plan my days{Enter}')
+  await tapAdd()
   await userEvent.click(await screen.findByRole('button', { name: 'Undo' }))
   expect(await screen.findByText('Kept 1 edited since')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
@@ -112,6 +120,7 @@ it('looks a place up only in the city the assistant named', async () => {
   renderAt('/trips/t1', routes)
   await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
   await userEvent.type(screen.getByLabelText('Message the assistant'), 'Plan my days{Enter}')
+  await tapAdd()
   expect(await screen.findByText(/Added 2 to Destinations/)).toBeInTheDocument()
   // Osaka isn't a trip city, so Ichiran isn't searched near Tokyo; it's added by name for the traveler to place.
   expect(calls.filter((c) => c.url.includes('/places/search')).map((c) => c.url)).toEqual([expect.stringContaining('Tsukiji')])
@@ -134,6 +143,7 @@ it('tells failed saves apart from duplicates, and keeps a named city to its own 
   renderAt('/trips/t1', routes)
   await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
   await userEvent.type(screen.getByLabelText('Message the assistant'), 'Add these{Enter}')
+  await tapAdd()
   expect(await screen.findByText(/Added 1 to Destinations · 1 not on the map yet · 1 already in the trip · 1 couldn't be saved/)).toBeInTheDocument()
 })
 

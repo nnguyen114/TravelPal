@@ -352,17 +352,43 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
 
 type Filter = 'all' | 'scheduled' | 'unscheduled'
 
-function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Destination[] }) {
+/**
+ * An idea's day picker. A failed save shows on this row with Retry for the chosen day; the list is refreshed
+ * either way, so a retry after someone else's edit uses the latest version.
+ */
+function AddToDay({ trip, d }: { trip: Trip; d: Destination }) {
   const qc = useQueryClient()
+  const [day, setDay] = useState('')
+  const save = useMutation({
+    mutationFn: (to: number) => api(`/api/trips/${trip.id}/destinations/${d.id}`, { method: 'PUT', body: toInput(d, { dayIndex: to }) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['destinations', trip.id] }),
+  })
+  return (
+    <span className="row" style={{ gap: 8 }}>
+      <label className="row" style={{ fontSize: 13, fontWeight: 700, gap: 8 }}>
+        Add to Day
+        <select aria-label={`Add ${d.name} to day`} value={day} disabled={save.isPending}
+          style={{ minHeight: 40, borderRadius: 10, border: '1.5px solid var(--line-2)', padding: '0 8px' }}
+          onChange={(e) => { setDay(e.target.value); if (e.target.value) save.mutate(Number(e.target.value)) }}>
+          <option value="" disabled>Choose…</option>
+          {Array.from({ length: trip.dayCount }, (_, i) => <option key={i} value={i}>Day {i + 1}</option>)}
+        </select>
+      </label>
+      {save.error && (
+        <span role="alert" className="error row" style={{ gap: 8, fontSize: 13 }}>
+          {save.error.message}
+          <button className="btn btn-soft" onClick={() => save.mutate(Number(day))}>Retry</button>
+        </span>
+      )}
+    </span>
+  )
+}
+
+function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Destination[] }) {
   const [filter, setFilter] = useState<Filter>('all')
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Destination | null>(null)
   const [discover, setDiscover] = useState<DiscoverAsk | null>(null)
-  const schedule = useMutation({
-    mutationFn: ({ d, day }: { d: Destination; day: number }) =>
-      api(`/api/trips/${trip.id}/destinations/${d.id}`, { method: 'PUT', body: toInput(d, { dayIndex: day }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['destinations', trip.id] }),
-  })
   const [mode, setMode] = useState<Mode>('BALANCED')
   const optimize = useOptimize(trip.id)
   const ideas = destinations.filter((d) => d.dayIndex === null)
@@ -399,7 +425,7 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
           </div>
         </section>
       )}
-      {(schedule.error ?? optimize.error) && <div role="alert" className="error" style={{ marginTop: 16 }}>{(schedule.error ?? optimize.error)!.message}</div>}
+      {optimize.error && <div role="alert" className="error" style={{ marginTop: 16 }}>{optimize.error.message}</div>}
       <ul style={{ listStyle: 'none', margin: '20px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {shown.length === 0 && <li><Empty title="No places here yet.">Add a few spots you're curious about. They can sit here until you decide on a day.</Empty></li>}
         {shown.map((d) => (
@@ -419,16 +445,7 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
                 ? <span className="day-tag day-tag-idea">Idea</span>
                 : <span className="day-tag" title={formatDay(dayDate(trip, d.dayIndex))}>Day {d.dayIndex + 1}</span>}
             </button>
-            {d.dayIndex === null && canEdit(trip) && (
-              <label className="row" style={{ fontSize: 13, fontWeight: 700, gap: 8 }}>
-                Add to Day
-                <select aria-label={`Add ${d.name} to day`} defaultValue="" style={{ minHeight: 40, borderRadius: 10, border: '1.5px solid var(--line-2)', padding: '0 8px' }}
-                  onChange={(e) => e.target.value && schedule.mutate({ d, day: Number(e.target.value) })}>
-                  <option value="" disabled>Choose…</option>
-                  {Array.from({ length: trip.dayCount }, (_, i) => <option key={i} value={i}>Day {i + 1}</option>)}
-                </select>
-              </label>
-            )}
+            {d.dayIndex === null && canEdit(trip) && <AddToDay trip={trip} d={d} />}
           </li>
         ))}
       </ul>

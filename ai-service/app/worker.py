@@ -20,8 +20,12 @@ def sqs_client():
 
 
 def queue_url(sqs, name: str) -> str:
-    # Idempotent: returns the existing queue. In AWS the queues come from Terraform and this is a lookup.
-    return sqs.create_queue(QueueName=name)["QueueUrl"]
+    # A lookup: in AWS the queues come from Terraform with their own settings, and CreateQueue with different
+    # attributes is rejected. Only a local queue service (LocalStack) has none yet, so it's created there.
+    try:
+        return sqs.get_queue_url(QueueName=name)["QueueUrl"]
+    except sqs.exceptions.QueueDoesNotExist:
+        return sqs.create_queue(QueueName=name)["QueueUrl"]
 
 
 def handle(job: dict) -> dict:

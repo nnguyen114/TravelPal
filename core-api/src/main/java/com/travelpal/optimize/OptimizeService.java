@@ -22,6 +22,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalTime;
 import java.util.LinkedHashMap;
 
@@ -37,6 +39,8 @@ public class OptimizeService {
     record JobRequested(UUID previewId, String body) {}
 
     private static final Logger log = LoggerFactory.getLogger(OptimizeService.class);
+    /** Longer than SQS's 5 tries at a 180 s visibility timeout (Terraform); a preview still pending after this never got its job. */
+    static final Duration PENDING_DEADLINE = Duration.ofMinutes(15);
 
     private final OptimizationPreviewRepository previews;
     private final TripAccess access;
@@ -99,7 +103,7 @@ public class OptimizeService {
             queue.send(e.body());
         } catch (RuntimeException ex) {
             log.error("Could not queue optimize job {}", e.previewId(), ex);
-            // ponytail: a crash between commit and send still strands the preview; a transactional outbox fixes that if it bites.
+            // A crash between commit and send skips this; PENDING_DEADLINE settles that preview instead.
             newTx.executeWithoutResult(s -> previews.findById(e.previewId())
                 .ifPresent(p -> p.complete(OptimizationPreview.Status.FAILED, null, "Couldn't start the optimizer. Try again.")));
         }
@@ -127,10 +131,15 @@ public class OptimizeService {
         return n.isNull() || n.isMissingNode() ? null : LocalTime.parse(n.asString());
     }
 
-    @Transactional(readOnly = true)
+    /** A preview past its deadline is settled as failed here, so the page stops waiting and offers Try again. */
+    @Transactional
     public OptimizationPreview get(UUID userId, UUID tripId, UUID previewId) {
         access.require(tripId, userId, TripRole.VIEWER);
-        return find(tripId, previewId);
+        OptimizationPreview p = find(tripId, previewId);
+        if (p.getStatus() == OptimizationPreview.Status.PENDING && p.getCreatedAt().isBefore(Instant.now().minus(PENDING_DEADLINE))) {
+            p.complete(OptimizationPreview.Status.FAILED, null, "The optimizer didn't answer. Try again.");
+        }
+        return p;
     }
 
     /** The knobs the preview was made with (mode, scope, day, places, instructions), without the trip snapshot. */

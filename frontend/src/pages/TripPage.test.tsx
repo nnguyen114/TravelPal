@@ -24,7 +24,7 @@ const stops = [
   dest('Nikko', 2, 1, { dayTrip: true }),
 ]
 
-function api(over: Partial<Parameters<typeof trip>[0]> = {}) {
+function api(over: Partial<Parameters<typeof trip>[0]> = {}, extra: Parameters<typeof mockApi>[0] = {}) {
   return mockApi({
     'GET /api/trips/t1': () => json(200, trip(over)),
     'GET /api/trips/t1/destinations': () => json(200, stops),
@@ -33,6 +33,7 @@ function api(over: Partial<Parameters<typeof trip>[0]> = {}) {
     'PUT /api/trips/t1/destinations/Cat Street': (b) => json(200, b),
     'PUT /api/trips/t1/destinations/Golden Gai': (b) => json(200, b),
     'DELETE /api/trips/t1/destinations/Cat Street': () => new Response(null, { status: 204 }),
+    ...extra,
   })
 }
 
@@ -144,6 +145,20 @@ it('destinations tab filters and schedules ideas', async () => {
   expect(cat.closest('li')).toHaveStyle({ '--c': '#14A098' })
   await userEvent.click(screen.getByRole('button', { name: /Add Destination/ }))
   expect(screen.getByLabelText('Day')).toHaveValue('')
+})
+
+it('shows a failed day assignment on its row, with Retry for the chosen day', async () => {
+  let tries = 0
+  const calls = api({}, { 'PUT /api/trips/t1/destinations/Golden Gai': (b) => (tries++ ? json(200, b) : json(500, { detail: 'Network hiccup' })) })
+  renderAt('/trips/t1/destinations', routes)
+  const pick = await screen.findByLabelText('Add Golden Gai to day')
+  await userEvent.selectOptions(pick, '1')
+  const row = pick.closest('li')!
+  expect(await within(row).findByRole('alert')).toHaveTextContent('Network hiccup')
+  expect(pick).toHaveValue('1')
+  await userEvent.click(within(row).getByRole('button', { name: 'Retry' }))
+  await waitFor(() => expect(within(row).queryByRole('alert')).not.toBeInTheDocument())
+  expect(calls.filter((c) => c.method === 'PUT').map((c) => (c.body as { dayIndex: number }).dayIndex)).toEqual([1, 1])
 })
 
 it('fits every idea into days with one optimizer run', async () => {

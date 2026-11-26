@@ -169,7 +169,8 @@ export function OptimizePage() {
       {p?.status === 'PENDING' && (
         <div className="card" role="status" style={{ marginTop: 22, padding: 28, textAlign: 'center' }}>
           <div style={{ fontSize: 18, fontWeight: 800 }}>Building your plan…</div>
-          <p className="muted" style={{ margin: '6px 0 0' }}>{slow ? 'This is taking longer than usual. You can leave and come back.' : 'Grouping places by neighborhood and fitting them into days.'}</p>
+          <p className="muted" style={{ margin: '6px 0 0' }}>{slow ? 'This is taking longer than usual. You can leave and come back, or start again.' : 'Grouping places by neighborhood and fitting them into days.'}</p>
+          {slow && <button className="btn" style={{ marginTop: 12 }} disabled={rerun.isPending} onClick={() => again({})}>Start again</button>}
         </div>
       )}
       {p?.status === 'FAILED' && (

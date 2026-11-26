@@ -38,13 +38,13 @@ function undoFailure(e: unknown): 'removed' | 'kept' | 'failed' {
 
 const SUGGESTED = ['Find food and sights for my trip', 'How full is Day 1?', 'Make Day 2 lighter']
 
-/** Adds the assistant's places as soon as they arrive (editors only); the traveler keeps or undoes them. */
+/** The assistant's picks, added only when an editor taps Add; then what saved is reported, with Undo. */
 function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 'places' }> }) {
   const qc = useQueryClient()
   const [added, setAdded] = useState<Added[] | null>(null)
   const [note, setNote] = useState('')
   const [undoing, setUndoing] = useState(false)
-  const started = useRef(false)
+  const [adding, setAdding] = useState(false)
   const gone = useRef(false)
   useEffect(() => {
     gone.current = false
@@ -70,34 +70,32 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
     return match && (!near.length || near.some((c) => km(c, match) <= limit)) ? match : undefined
   }
 
-  useEffect(() => {
-    if (started.current || !canEdit(trip)) return
-    started.current = true // once per proposal, even when React mounts it twice in development
-    ;(async () => {
-      const ids: Added[] = []
-      let unlocated = 0
-      let dupes = 0
-      let failed = 0
-      for (const x of p.places) {
-        if (gone.current) return // left the trip: stop adding; what's already added stays in Destinations
-        const at = x.lat != null ? { ...x, lat: x.lat, lng: x.lng! } : await locate(x.name, x.city)
-        const day = x.day_number > 0 && x.day_number <= trip.dayCount ? x.day_number - 1 : null
-        await api<Added>(`/api/trips/${trip.id}/destinations`, {
-          method: 'POST',
-          body: {
-            name: at?.name ?? x.name, address: at?.address || null, lat: at?.lat ?? null, lng: at?.lng ?? null,
-            providerId: at?.providerId ?? null, notes: null, durationMin: 60, startTime: null, locked: false, flexibility: 'FLEXIBLE',
-            dayIndex: day,
-          },
-        }).then((d) => { ids.push({ id: d.id, version: d.version }); if (!at) unlocated++ },
-          (e) => (e instanceof ApiError && e.status === 409 ? dupes++ : failed++))
-      }
-      refresh()
-      setAdded(ids)
-      setNote([unlocated ? `${unlocated} not on the map yet` : '', dupes ? `${dupes} already in the trip` : '',
-        failed ? `${failed} couldn't be saved` : ''].filter(Boolean).join(' · '))
-    })()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  async function addAll() {
+    setAdding(true)
+    const ids: Added[] = []
+    let unlocated = 0
+    let dupes = 0
+    let failed = 0
+    for (const x of p.places) {
+      if (gone.current) return // left the trip: stop adding; what's already added stays in Destinations
+      const at = x.lat != null ? { ...x, lat: x.lat, lng: x.lng! } : await locate(x.name, x.city)
+      const day = x.day_number > 0 && x.day_number <= trip.dayCount ? x.day_number - 1 : null
+      await api<Added>(`/api/trips/${trip.id}/destinations`, {
+        method: 'POST',
+        body: {
+          name: at?.name ?? x.name, address: at?.address || null, lat: at?.lat ?? null, lng: at?.lng ?? null,
+          providerId: at?.providerId ?? null, notes: null, durationMin: 60, startTime: null, locked: false, flexibility: 'FLEXIBLE',
+          dayIndex: day,
+        },
+      }).then((d) => { ids.push({ id: d.id, version: d.version }); if (!at) unlocated++ },
+        (e) => (e instanceof ApiError && e.status === 409 ? dupes++ : failed++))
+    }
+    refresh()
+    setAdded(ids)
+    setAdding(false)
+    setNote([unlocated ? `${unlocated} not on the map yet` : '', dupes ? `${dupes} already in the trip` : '',
+      failed ? `${failed} couldn't be saved` : ''].filter(Boolean).join(' · '))
+  }
 
   /**
    * Deletes only places nobody has changed since (the server checks the version). A 404 means it's already gone;
@@ -126,9 +124,16 @@ function PlacesProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type: 
       </span>
       {!canEdit(trip)
         ? <span className="muted" style={{ fontSize: 13 }}>Only editors can add places.</span>
-        : added === null
-          ? <span role="status" className="muted" style={{ fontSize: 13 }}>Adding…</span>
-          : (
+        : added === null && !adding
+          ? (
+            <div className="spread" style={{ gap: 8 }}>
+              <span className="muted" style={{ fontSize: 13 }}>{onDays ? `${onDays} on days, the rest as ideas` : 'Added as ideas, no day yet'}</span>
+              <button className="btn btn-primary" onClick={addAll}>Add {p.places.length} {p.places.length === 1 ? 'place' : 'places'}</button>
+            </div>
+          )
+          : added === null
+            ? <span role="status" className="muted" style={{ fontSize: 13 }}>Adding…</span>
+            : (
             <div className="spread" style={{ gap: 8 }}>
               <span role="status" style={{ fontSize: 13, fontWeight: 600 }}>
                 {added.length ? `Added ${added.length} to Destinations${onDays ? ` · ${onDays} on days` : ''}` : ''}
@@ -162,7 +167,7 @@ function OptimizeProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type
 }
 
 /**
- * On-demand trip copilot. Places it picks are added right away (with Undo); day rearrangements stay a preview.
+ * On-demand trip copilot. Places it picks are added when the traveler taps Add (with Undo); day rearrangements stay a preview.
  * Closing only hides it, so a running add, its Undo and the chat are all still there when it reopens.
  */
 export function AssistantDrawer({ trip, open, onClose }: { trip: Trip; open: boolean; onClose: () => void }) {
@@ -227,7 +232,7 @@ export function AssistantDrawer({ trip, open, onClose }: { trip: Trip; open: boo
       <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {msgs.length === 0 && (
           <>
-            <p className="muted" style={{ margin: 0, fontSize: 14 }}>Ask for ideas in a city, paste a list of places, or ask for a lighter day. Places I find go straight into Destinations, and you can undo.</p>
+            <p className="muted" style={{ margin: 0, fontSize: 14 }}>Ask for ideas in a city, paste a list of places, or ask for a lighter day. Places I find show up here, ready to add with one tap.</p>
             <div className="row" style={{ gap: 8 }}>
               {SUGGESTED.map((s) => <button key={s} className="btn btn-soft" style={{ borderRadius: 999 }} onClick={() => send(s)}>{s}</button>)}
             </div>
