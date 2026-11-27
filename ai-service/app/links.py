@@ -40,6 +40,8 @@ WALLS = {"", "log in", "login", "sign in", "sign up", "log in or sign up", "acce
          "403 forbidden", "404 not found", "not found", "page not found", "just a moment", "attention required",
          "are you a robot", "security check", "make your day"}
 # A chain branch named after its area: "Ichiran Shibuya Branch", "一蘭 渋谷店".
+# Separates a page title's parts: "Mintei - Shimokitazawa | Tabelog".
+TITLE_PARTS = re.compile(r"\s[|\-–—]\s")
 BRANCH_SUFFIXES = ("", " branch", " store", "店", " 店", "支店", " 支店")
 META = re.compile(r'<meta[^>]+(?:property|name)=["\'](og:title|og:description|description)["\'][^>]+content=["\']([^"\']*)', re.IGNORECASE)
 TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
@@ -158,9 +160,12 @@ def page_text(page: str) -> tuple[str, str]:
 
 
 def filler(text: str) -> bool:
-    """Text that names no place: empty, a site's own name, or a login/blocked page's title."""
+    """Text that names no place: empty, a site's own name, or a login/blocked page's title, including one whose
+    title has the wall as one part beside any publisher's name ("Sign in | Example Publisher")."""
     words = norm(text).split()
-    return "".join(words) in PUBLISHERS or " ".join(w for w in words if w not in PUBLISHERS) in WALLS
+    if "".join(words) in PUBLISHERS or " ".join(w for w in words if w not in PUBLISHERS) in WALLS:
+        return True
+    return any(norm(part) in WALLS for part in TITLE_PARTS.split(text) if norm(part))
 
 
 def norm(text: str) -> str:
@@ -208,8 +213,8 @@ def guess(text: str, url: str = "", video: bool = False, title: str = "") -> tup
             if video and not stated(place, text):
                 return "", ""
             return place, area if not video or stated(area, text) else ""
-    first = re.split(r"\s[|\-–—]\s", title)[0].strip()
-    return first[:150], ""
+    first = TITLE_PARTS.split(title)[0].strip()
+    return ("" if filler(first) else first[:150]), ""  # "Tabelog | Mintei" leads with the publisher
 
 
 def candidates(guess: str, near: dict | None, http: httpx.Client | None, area: str = "", inferred: bool = False) -> dict:

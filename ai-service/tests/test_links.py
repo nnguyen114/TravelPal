@@ -495,6 +495,23 @@ def test_without_claude_a_publisher_title_isnt_a_place(monkeypatch):
     assert out["guess"] is None and out["message"].startswith("We read the page but couldn't tell")
 
 
+@pytest.mark.parametrize("title", ["Sign in | Example Publisher", "Example Publisher - Access Denied",
+                                   "Example Publisher — 404 Not Found", "Tabelog | Mintei"])
+def test_without_claude_a_walled_or_publisher_first_title_isnt_searched(title, monkeypatch):
+    public(monkeypatch)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    searched = []
+
+    def routes(r):
+        if r.url.host == "api.geoapify.com":
+            searched.append(r.url.params["text"])
+            return httpx.Response(200, json={"results": []})
+        return httpx.Response(200, text=f"<title>{title}</title>", headers={"content-type": "text/html"})
+    out = links.resolve("https://site.example/p", None, client(routes))
+    assert out == links.fail("We read the page but couldn't tell which place it's about. Type the place name instead.",
+                             readable=True) and searched == []
+
+
 def test_page_queries_reach_the_site_but_not_claude(monkeypatch):
     public(monkeypatch)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
