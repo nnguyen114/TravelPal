@@ -57,10 +57,28 @@ class FakeClient:
         self.responses = list(responses)
         self.calls = []
         self.error = error
-        self.beta = NS(messages=NS(create=self.create))
+        self.beta = NS(messages=NS(create=self.create, stream=self.stream))
+
+    def stream(self, **kw):
+        """The sync streaming helper: a context manager whose get_final_message() is the next response."""
+        return _Final(self.create(**kw))
 
     def create(self, **kw):
         self.calls.append(kw)
         if self.error:
             raise self.error
         return self.responses.pop(0)
+
+
+class _Final:
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def get_final_message(self):
+        return self.msg

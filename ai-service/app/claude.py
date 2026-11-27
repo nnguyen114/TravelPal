@@ -33,16 +33,17 @@ def client() -> anthropic.Anthropic:
     return _client
 
 
-def _json_call(system: str, user: str, schema: dict) -> dict | None:
+def _json_call(system: str, user: str | list[dict], schema: dict, max_tokens: int = 4000) -> dict | None:
+    """User content may be text or content blocks (e.g. a PDF document). Large outputs are streamed, so a long
+    answer isn't cut off by the HTTP timeout of a plain request."""
+    kw = dict(model=MODEL, max_tokens=max_tokens, system=system, messages=[{"role": "user", "content": user}],
+              output_config={"effort": "low", "format": {"type": "json_schema", "schema": schema}}, **FALLBACK)
     try:
-        resp = client().beta.messages.create(
-            model=MODEL,
-            max_tokens=4000,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-            output_config={"effort": "low", "format": {"type": "json_schema", "schema": schema}},
-            **FALLBACK,
-        )
+        if max_tokens > 16000:
+            with client().beta.messages.stream(**kw) as stream:
+                resp = stream.get_final_message()
+        else:
+            resp = client().beta.messages.create(**kw)
     except anthropic.APIError as e:
         log.warning("Claude call failed: %s", e)
         return None

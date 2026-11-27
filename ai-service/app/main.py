@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from app import chat, discovery, impact, links, places, security, worker
+from app import chat, discovery, impact, importer, links, places, security, worker
 from app.security import require_internal
 
 # Local dev: keys live in the repo-root .env (gitignored). Real env vars win.
@@ -93,3 +93,22 @@ class LinkRequest(BaseModel):
 @app.post("/internal/link")
 def link(req: LinkRequest, _: Annotated[dict, Depends(require_internal)]) -> dict:
     return links.resolve(req.url, req.near)
+
+
+# A 10 MB PDF is about 14 MB as base64 in JSON; anything much bigger is refused before it is read.
+MAX_IMPORT_BODY = 15 * 1024 * 1024
+
+
+@app.post("/internal/import")
+def import_plan(req: importer.ImportRequest, _: Annotated[dict, Depends(require_internal)]) -> dict:
+    try:
+        return importer.read(req)
+    except importer.Unavailable as e:
+        raise HTTPException(503, "Reading plans is unavailable right now") from e
+
+
+@app.middleware("http")
+async def limit_import_body(request, call_next):
+    if request.url.path == "/internal/import" and int(request.headers.get("content-length") or 0) > MAX_IMPORT_BODY:
+        return JSONResponse(status_code=413, content={"detail": "Too large"})
+    return await call_next(request)

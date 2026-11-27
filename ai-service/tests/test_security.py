@@ -2,31 +2,12 @@ import time
 
 import jwt
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.conftest import keypair
 
 client = TestClient(app)
-
-
-def keypair():
-    priv = ec.generate_private_key(ec.SECP256R1())
-    pub = priv.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-    return priv, pub.decode()
-
-
-@pytest.fixture
-def signer(monkeypatch):
-    priv, pub = keypair()
-    monkeypatch.setenv("INTERNAL_JWT_PUBLIC_KEY", pub)
-
-    def sign(**overrides):
-        claims = {"iss": "core-api", "aud": "ai-service", "exp": int(time.time()) + 60} | overrides
-        return {"Authorization": "Bearer " + jwt.encode(claims, priv, algorithm="ES256")}
-
-    return sign
 
 
 def test_health_is_public():
