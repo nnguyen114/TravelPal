@@ -205,6 +205,17 @@ def test_same_day_stops_keep_their_day_in_a_trip_run_but_are_reordered():
     assert not set(out["unscheduled"]) & {d["id"] for d in pinned_days + far_first}
 
 
+def test_a_full_same_day_never_gets_times_past_midnight():
+    dinner = dest("Omakase", 35.65, 139.70, dayIndex=0, position=0, startTime="20:30", locked=True, durationMin=120)
+    stops = [dest(f"Stop {i}", 35.66 + i / 1000, 139.70, dayIndex=0, position=i + 1, flexibility="SAME_DAY", durationMin=120) for i in range(8)]
+    out = optimize(job([dinner] + stops, days=1))
+    r = by_id(out)
+    assert all(r[s["id"]]["dayIndex"] == 0 for s in stops)
+    assert all(i["startTime"] is None or i["startTime"] < "24:00" for i in out["items"])
+    assert any(r[s["id"]]["startTime"] is None for s in stops)
+    assert any("Runs past" in n["reason"] for n in out["needsReview"])
+
+
 def test_same_day_stops_move_freely_in_a_day_run_and_ideas_are_ordinary():
     stops = [dest(n, la, lo, dayIndex=0, position=i, flexibility="SAME_DAY") for i, (n, la, lo) in enumerate(SHINJUKU[:2] + ASAKUSA[:1])]
     r = by_id(optimize(job(stops, days=1, scope="DAY", dayIndex=0)))

@@ -142,7 +142,11 @@ Its options are not separate items.
 - NOTE: anything else worth keeping that isn't a place: a birthday, a reminder. A remark about a place goes in that \
 place's note instead.
 - The same place twice in one day (as dinner and in the plans) is one item. A line that strings several things \
-together is split into one item each.
+together is split into one item each. Never merge different lines into one item because they share a time or might \
+be related: two plans at the same time stay two items (the clash is flagged for the traveler).
+- A title uses only the plan's words; never add words to make a name more specific. A vague activity without a name \
+you could find on a map ("chill walk", "explore around") is a NOTE. A booked meal or reservation at a time ("Omakase \
+at 8:30: $20 reserve") is a timed PLACE even without a venue name: title "Omakase", booking details in note.
 - If <trip> gives an existing trip, it is context for which year and cities the plan means."""
 
 
@@ -325,7 +329,10 @@ def candidates(q: str, near: dict | None, http: httpx.Client | None) -> list[dic
     found = places.search(q, near=near, limit=5, http=http)
     if near:
         found = [f for f in found if km(point((f["lat"], f["lng"])), point((near["lat"], near["lng"]))) <= NEAR_CITY_KM]
-    return [{k: f[k] for k in ("name", "address", "lat", "lng", "providerId")} for f in found[:3]]
+    unique: dict[str, dict] = {}
+    for f in found:  # the same name twice (a street's segments) is one choice
+        unique.setdefault(norm(f["name"]), f)
+    return [{k: f[k] for k in ("name", "address", "lat", "lng", "providerId")} for f in list(unique.values())[:3]]
 
 
 def match(draft: dict, http: httpx.Client | None = None) -> list[dict]:

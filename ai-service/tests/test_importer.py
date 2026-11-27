@@ -163,6 +163,13 @@ def test_years_roll_forward_through_the_plan(claude_says):
     assert not any(i["kind"] == "YEAR_ASSUMED" for i in explicit["issues"])
 
 
+def test_candidates_with_the_same_name_count_once():
+    twice = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"results": [
+        {"name": "Hoppy Street", "lat": 35.71, "lon": 139.79, "place_id": "a"},
+        {"name": "Hoppy street", "lat": 35.71, "lon": 139.79, "place_id": "b"}]})))
+    assert [c["providerId"] for c in importer.candidates("Hoppy Street", None, twice)] == ["geoapify:a"]
+
+
 def test_next_occurrence_is_on_or_after_the_reference():
     assert importer.next_on_or_after(11, 26, TODAY) == TODAY
     assert importer.next_on_or_after(11, 25, TODAY) == date(2027, 11, 25)

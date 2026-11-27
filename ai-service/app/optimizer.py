@@ -341,7 +341,9 @@ def optimize(job: dict, constraints: Constraints | None = None) -> dict:
     items, moved, added, unscheduled, kept = [], [], [], [], []
     for s in stops:
         day, pos, st = result[s.id]
-        items.append({"id": s.id, "dayIndex": day, "position": pos, "startTime": fmt(st) if st is not None else None})
+        # A stop that must stay on a full day (same day, or a day run) can be pushed past midnight: it keeps its day
+        # and place in the order, without a time (it is in needsReview as running late).
+        items.append({"id": s.id, "dayIndex": day, "position": pos, "startTime": fmt(st) if st is not None and st < 24 * 60 else None})
         b_day = before[s.id][0]
         if s.pinned:
             kept.append(s.id)
