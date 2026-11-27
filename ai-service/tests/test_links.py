@@ -1,4 +1,7 @@
+from urllib.parse import urlparse
+
 import httpx
+import pytest
 
 from app import links
 
@@ -14,12 +17,23 @@ def client(routes):
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-HOSTS = {"short.link": "93.184.216.1", "site.example": "93.184.216.2", "social.example": "93.184.216.3", "a.example": "93.184.216.4"}
+HOSTS = {"short.link": "93.184.216.1", "site.example": "93.184.216.2", "social.example": "93.184.216.3", "a.example": "93.184.216.4",
+         "maps.app.goo.gl": "93.184.216.5", "www.google.com": "93.184.216.6", "google.com.site.example": "93.184.216.7"}
 BY_IP = {v: k for k, v in HOSTS.items()}
+MAPS_MISS = "This Google Maps link doesn't identify a place we can look up. Type the place name instead."
+TOKYO = {"lat": 35.68, "lng": 139.76}
 
 
 def public(monkeypatch):
-    monkeypatch.setattr(links, "public_ip", lambda h: HOSTS.get(h))
+    """Answers the public-address check from HOSTS; returns the names it was asked about."""
+    checked = []
+    monkeypatch.setattr(links, "public_ip", lambda h: checked.append(h) or HOSTS.get(h))
+    return checked
+
+
+def no_claude(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setattr(links.claude, "_json_call", lambda *a: 1 / 0)
 
 
 def host(r: httpx.Request) -> str:
@@ -29,15 +43,109 @@ def host(r: httpx.Request) -> str:
     return r.headers["host"]
 
 
-def test_google_maps_links_need_no_fetch():
-    out = links.resolve("https://www.google.com/maps/place/Senso-ji/@35.7148,139.7967,17z", None, client(lambda r: 1 / 0))
-    assert out["guess"] == "Senso-ji" and out["candidates"][0]["lat"] == 35.7148
+@pytest.mark.parametrize("url, name, lat, lng", [
+    ("https://www.google.com/maps/place/Senso-ji/@35.7148,139.7967,17z", "Senso-ji", 35.7148, 139.7967),
+    ("https://google.com/maps/place/Sens%C5%8D-ji/@35.7148,139.7967,17z/data=!3m1?entry=ttu&g_ep=abc", "Sensō-ji", 35.7148, 139.7967),
+    ("https://www.google.com/maps/place/浅草寺/@35.7148,139.7967", "浅草寺", 35.7148, 139.7967),
+    ("https://maps.google.com/maps/place/A%2BB+Cafe/@-33,151,12z", "A+B Cafe", -33.0, 151.0),
+    ("https://www.google.com/maps/place/Edge/@90,-180", "Edge", 90.0, -180.0),
+    ("https://www.google.com/maps/place/Edge/@-90.0,180.0/", "Edge", -90.0, 180.0),
+])
+def test_google_maps_place_links_need_no_fetch(url, name, lat, lng):
+    out = links.resolve(url, None, client(lambda r: 1 / 0))
+    assert out == {"readable": True, "guess": name, "message": None,
+                   "candidates": [{"name": name, "lat": lat, "lng": lng, "providerId": None, "address": ""}]}
 
 
-def test_maps_search_links_search_the_query(monkeypatch):
-    out = links.resolve("https://maps.google.com/?q=Koffee+Mameya", {"lat": 35.68, "lng": 139.76},
-                        client(lambda r: httpx.Response(200, json=GEOCODED)))
-    assert out["guess"] == "Koffee Mameya" and out["candidates"][0]["providerId"] == "geoapify:p9"
+@pytest.mark.parametrize("url", [
+    "https://www.google.com/maps/place/Edge/@90.1,0",
+    "https://www.google.com/maps/place/Edge/@0,180.5",
+    "https://www.google.com/maps/place/Edge/@abc,def",
+    "https://www.google.com/maps/place/+/@35.7,139.7",
+    "https://www.google.com/maps/place/Senso-ji/data=!4m2!3m1",
+    "https://www.google.com/maps/dir/Tokyo+Station/Senso-ji",
+    "https://www.google.com/maps/@35.7,139.7,15z",
+    "https://www.google.com/maps/search/?api=1&query=%20",
+    "https://maps.google.com/",
+])
+def test_maps_links_without_a_place_say_so(url):
+    assert links.resolve(url, None, client(lambda r: 1 / 0)) == links.fail(MAPS_MISS)
+
+
+def test_maps_share_links_follow_redirects_to_the_place(monkeypatch):
+    checked = public(monkeypatch)
+    no_claude(monkeypatch)
+    seen = []
+
+    def routes(r):
+        seen.append((host(r), r.url.path))
+        if r.url.path == "/abc":
+            return httpx.Response(302, headers={"location": "/r/abc"})
+        return httpx.Response(301, headers={"location": "https://www.google.com/maps/place/Senso-ji/@35.7148,139.7967,17z?entry=gps"})
+    out = links.resolve("https://maps.app.goo.gl/abc", None, client(routes))
+    assert out["candidates"] == [{"name": "Senso-ji", "lat": 35.7148, "lng": 139.7967, "providerId": None, "address": ""}]
+    assert seen == [("maps.app.goo.gl", "/abc"), ("maps.app.goo.gl", "/r/abc")]  # never the Maps page itself
+    assert checked == ["maps.app.goo.gl", "maps.app.goo.gl", "www.google.com"]
+
+
+def test_maps_share_link_that_leads_elsewhere(monkeypatch):
+    public(monkeypatch)
+    out = links.resolve("https://maps.app.goo.gl/x", None, client(lambda r: httpx.Response(
+        200, text="<title>Consent</title>", headers={"content-type": "text/html"})))
+    assert out["message"] == MAPS_MISS
+
+
+def geoapify(seen, result=GEOCODED):
+    def answer(r):
+        seen.append((r.url.params["text"], r.url.params.get("bias")))
+        return httpx.Response(200, json=result)
+    return answer
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.google.com/maps/search/?api=1&query=Ichiran%20Shibuya",
+    "https://www.google.com/maps/search?api=1&query=Ichiran+Shibuya&query_place_id=x",
+    "https://www.google.com/maps/search/?api=1&query=+&q=Ichiran+Shibuya",
+    "https://maps.google.com/?q=Ichiran+Shibuya",
+    "https://www.google.com/maps?q=Ichiran%20Shibuya&entry=gps",
+])
+def test_maps_search_links_search_the_query(url, monkeypatch):
+    no_claude(monkeypatch)
+    seen = []
+    out = links.resolve(url, TOKYO, client(geoapify(seen)))
+    assert seen == [("Ichiran Shibuya", "proximity:139.76,35.68")]
+    assert out["guess"] == "Ichiran Shibuya" and out["candidates"][0]["providerId"] == "geoapify:p9" and out["message"] is None
+
+
+def test_maps_search_links_through_a_share_link(monkeypatch):
+    public(monkeypatch)
+    no_claude(monkeypatch)
+    seen = []
+
+    def routes(r):
+        if r.url.host == "api.geoapify.com":
+            return geoapify(seen)(r)
+        assert host(r) == "maps.app.goo.gl"
+        return httpx.Response(302, headers={"location": "https://www.google.com/maps/search/?api=1&query=Ichiran%20Shibuya"})
+    out = links.resolve("https://maps.app.goo.gl/q", TOKYO, client(routes))
+    assert seen == [("Ichiran Shibuya", "proximity:139.76,35.68")] and out["candidates"]
+
+
+@pytest.mark.parametrize("url", [
+    "https://google.com.site.example/maps/place/Senso-ji/@35.7,139.7",
+    "https://site.example/r?u=https://www.google.com/maps/place/Senso-ji/@35.7,139.7&q=maps",
+])
+def test_maps_lookalikes_are_ordinary_pages(url, monkeypatch):
+    public(monkeypatch)
+    fetched = []
+
+    def routes(r):
+        if r.url.host == "api.geoapify.com":
+            return httpx.Response(200, json=GEOCODED)
+        fetched.append(host(r))
+        return httpx.Response(200, text=PAGE, headers={"content-type": "text/html"})
+    out = links.resolve(url, None, client(routes))
+    assert fetched == [urlparse(url).hostname] and out["guess"] == "Koffee Mameya Kakeru"
 
 
 def test_reads_a_page_follows_safe_redirects_and_finds_the_place(monkeypatch):
@@ -84,6 +192,11 @@ def test_blocks_private_addresses_and_unreadable_pages(monkeypatch):
     assert "can't open" in hop["message"]
     loop = links.resolve("https://a.example", None, client(lambda r: httpx.Response(302, headers={"location": "https://a.example/again"})))
     assert "too many times" in loop["message"]
+    for url in ("https://[::1", "https://a.example:99999/", "https://a.example:port/", "https://a.example/\x00"):
+        assert links.resolve(url, None, client(lambda r: 1 / 0))["message"].startswith("That link points somewhere")
+    big = links.resolve("https://a.example", None, client(lambda r: httpx.Response(
+        200, content=b"<title>x</title>" + b" " * links.MAX_BYTES, headers={"content-type": "text/html"})))
+    assert big == links.fail("That page couldn't be read (it may need a login). Type the place name instead.")
     down = links.resolve("https://a.example", None, client(lambda r: (_ for _ in ()).throw(httpx.ConnectError("x"))))
     assert "couldn't be reached" in down["message"]
 
