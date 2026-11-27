@@ -399,6 +399,19 @@ def test_tiktok_share_links_to_a_profile_or_elsewhere(monkeypatch):
     assert links.resolve("https://vm.tiktok.com/l/", None, client(routes))["message"].startswith("That link points somewhere")
 
 
+def down(r):
+    raise httpx.ConnectError("x")
+
+
+@pytest.mark.parametrize("answer", [lambda r: httpx.Response(404), down,
+                                    lambda r: httpx.Response(200, text="{}", headers=JSON)])
+def test_expired_or_unreachable_tiktok_shares_say_so(answer, monkeypatch):
+    public(monkeypatch)
+    fetched = []
+    out = links.resolve("https://vm.tiktok.com/ZMgone/", None, client(lambda r: fetched.append(host(r)) or answer(r)))
+    assert out == links.fail(VIDEO_BAD) and fetched == ["vm.tiktok.com"]
+
+
 @pytest.mark.parametrize("url", ["https://www.youtube.com/@somechannel", "https://youtu.be/short",
                                  "https://www.youtube.com/watch?v=dQw4w9WgXc!", "https://www.youtube.com/shorts/"])
 def test_youtube_links_that_arent_videos(url):

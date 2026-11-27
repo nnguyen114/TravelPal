@@ -345,6 +345,8 @@ def resolve(url: str, near: dict | None, http: httpx.Client | None = None, short
     try:  # a page or a short link; a redirect to a link we recognise is handled here, before its page is requested
         url, body = fetch(url, http or PAGE_CLIENT, stop=lambda target: route(target)[0] not in ("page", "short"))
     except Unreadable as e:
+        if arg == "tiktok" and e.reason in ("unreadable", "unreachable"):  # an expired or broken share
+            return fail(MESSAGES["video"])
         return fail(MESSAGES.get(e.reason, MESSAGES["unreadable"]))
     if body is None:
         return resolve(url, near, http, short=arg if kind == "short" else short)
