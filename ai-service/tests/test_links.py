@@ -212,7 +212,7 @@ BLOCKED = "That link points somewhere we can't open. Type the place name instead
 def test_malformed_redirects_are_blocked(location, monkeypatch):
     public(monkeypatch)
     fetched = []
-    redirect = lambda r: fetched.append(host(r)) or httpx.Response(302, headers={"location": location})  # noqa: E731
+    redirect = lambda r: fetched.append(host(r)) or httpx.Response(302, headers={"location": location})
     assert links.resolve("https://a.example/p", None, client(redirect)) == links.fail(BLOCKED)
     assert fetched == ["a.example"]  # the malformed target is never requested
     seen, routes = oembed(monkeypatch, httpx.Response(302, headers={"location": location}), {"place": "Ichiran", "area": ""})
@@ -264,11 +264,11 @@ JSON = {"content-type": "application/json; charset=utf-8"}
 
 def oembed(monkeypatch, answer, place=None, short=None):
     """A video's world: an optional share-link redirect, the oEmbed endpoint, Claude's reading, and Geoapify."""
-    public(monkeypatch)
+    checked = public(monkeypatch)
     if place is not None:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
         monkeypatch.setattr(links.claude, "_json_call", lambda system, user, schema: place)
-    seen = {"pages": [], "oembed": [], "search": [], "hosts": []}
+    seen = {"pages": [], "oembed": [], "search": [], "hosts": [], "checked": checked}
 
     def routes(r):
         if r.url.host == "api.geoapify.com":
@@ -358,17 +358,20 @@ def test_claude_giving_no_answer_asks_the_traveler(monkeypatch):
     httpx.Response(404, json={"error": "gone"}, headers=JSON),
     httpx.Response(302, headers={"location": "https://site.example/oembed"}),
     httpx.Response(302, headers={"location": "http://www.tiktok.com/oembed"}),
+    httpx.Response(302, headers={"location": "https://www.tiktok.com:8443/oembed"}),
+    httpx.Response(302, headers={"location": "https://other.example/oembed"}),
 ])
 def test_unreadable_video_metadata(answer, monkeypatch):
     seen, routes = oembed(monkeypatch, answer, {"place": "Ichiran", "area": ""})
     out = links.resolve("https://www.tiktok.com/@ramen.fan/video/123", TOKYO, client(routes))
     assert out == links.fail(VIDEO_BAD) and len(seen["oembed"]) == 1 and seen["search"] == []
+    assert seen["checked"] == ["www.tiktok.com"]  # an off-origin redirect's host is never even looked up
 
 
 def test_oembed_redirects_within_its_origin_are_followed(monkeypatch):
     def answer(r):
         if r.url.path == "/oembed":
-            return httpx.Response(302, headers={"location": "/oembed/v2"})
+            return httpx.Response(302, headers={"location": "https://www.tiktok.com/oembed/v2"})
         return httpx.Response(200, json={"type": "video", "title": ""}, headers=JSON)
     seen, routes = oembed(monkeypatch, answer)
     out = links.resolve("https://www.tiktok.com/@a/video/1", None, client(routes))

@@ -108,15 +108,16 @@ def fetch(url: str, http: httpx.Client, stop=None, want: str = "html") -> tuple[
     for hop in range(MAX_REDIRECTS + 1):
         try:
             u = urlparse(urldefrag(url).url)
-            origin = origin or u.netloc
-            ip = public_ip(u.hostname) if u.scheme in ("http", "https") and u.hostname else None
             port = u.port
+            where = (u.scheme, u.hostname, port or {"http": 80, "https": 443}.get(u.scheme))
+            origin = origin or where
+            if want == "json" and (u.scheme != "https" or where != origin):
+                raise Unreadable("offsite")  # before looking up a host we'd never request
+            ip = public_ip(u.hostname) if u.scheme in ("http", "https") and u.hostname else None
         except ValueError:  # malformed URL or port
             ip = None
         if ip is None:
             raise Unreadable("blocked")
-        if want == "json" and (u.scheme != "https" or u.netloc != origin):
-            raise Unreadable("offsite")
         if hop and stop and stop(url):
             return url, None
         host = f"[{ip}]" if ":" in ip else ip
