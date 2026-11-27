@@ -43,7 +43,7 @@ public class DestinationController {
                                  Integer durationMin, Integer dayIndex, Integer position, LocalTime startTime, boolean locked,
                                  Flexibility flexibility, long version, LocalTime visitAfter, LocalTime visitBefore, boolean dayTrip,
                                  String hintsSource) {
-        static DestinationDto of(Destination d) {
+        public static DestinationDto of(Destination d) {
             return new DestinationDto(d.getId(), d.getName(), d.getAddress(), d.getLat(), d.getLng(), d.getProviderId(), d.getNotes(),
                 d.getDurationMin(), d.getDayIndex(), d.getPosition(), d.getStartTime(), d.isLocked(), d.getFlexibility(), d.getVersion(),
                 d.getVisitAfter(), d.getVisitBefore(), d.isDayTrip(), d.getHintsSource());

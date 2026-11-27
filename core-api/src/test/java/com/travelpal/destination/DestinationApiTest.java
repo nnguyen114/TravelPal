@@ -9,10 +9,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.travelpal.IntegrationTest;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 
 class DestinationApiTest extends IntegrationTest {
+    @Autowired
+    DestinationService service;
     Login who;
     String base;
 
@@ -119,6 +125,19 @@ class DestinationApiTest extends IntegrationTest {
         mvc.perform(json(put(base), who, "{\"name\":\"T\",\"startDate\":\"2027-06-10\",\"endDate\":\"2027-06-11\"}")).andExpect(status().isOk());
         mvc.perform(auth(get(base + "/destinations"), who)).andExpect(jsonPath("$[0].id").value(late))
             .andExpect(jsonPath("$[0].dayIndex").doesNotExist());
+    }
+
+    @Test
+    void sameDayFlexibilityRoundTripsAndAPlanNeverMovesItToAnotherDay() throws Exception {
+        String id = read(mvc.perform(json(post(base + "/destinations"), who, "{\"name\":\"Senso-ji\",\"dayIndex\":1,\"flexibility\":\"SAME_DAY\"}"))
+            .andExpect(jsonPath("$.flexibility").value("SAME_DAY")).andReturn(), "$.id");
+        mvc.perform(auth(get(base + "/destinations"), who)).andExpect(jsonPath("$[0].flexibility").value("SAME_DAY"));
+        UUID trip = UUID.fromString(base.substring("/api/trips/".length()));
+        UUID dest = UUID.fromString(id);
+        service.applyPlan(who.userId(), trip, List.of(new DestinationService.PlanItem(dest, 0, 0, LocalTime.of(9, 0))), "moved");
+        mvc.perform(auth(get(base + "/destinations"), who)).andExpect(jsonPath("$[0].dayIndex").value(1));
+        service.applyPlan(who.userId(), trip, List.of(new DestinationService.PlanItem(dest, 1, 0, LocalTime.of(11, 0))), "retimed");
+        mvc.perform(auth(get(base + "/destinations"), who)).andExpect(jsonPath("$[0].startTime").value("11:00:00"));
     }
 
     @Test

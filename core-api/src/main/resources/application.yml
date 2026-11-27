@@ -9,6 +9,10 @@ spring:
     open-in-view: false
     hibernate.ddl-auto: validate
   mvc.problemdetails.enabled: true
+  # Itinerary import: one PDF of up to 10 MB, held in memory for the one request.
+  servlet.multipart:
+    max-file-size: 10MB
+    max-request-size: 11MB
   # Outbound HTTP (place search): fail fast rather than hold a request thread on a slow provider.
   http.clients:
     connect-timeout: 4s

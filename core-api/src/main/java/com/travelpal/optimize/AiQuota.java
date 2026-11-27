@@ -11,7 +11,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Component
 public class AiQuota {
     public enum Kind {
-        OPTIMIZE(30), ASSISTANT(60), DISCOVER(30);
+        OPTIMIZE(30), ASSISTANT(60), DISCOVER(30), IMPORT(20);
 
         final int perHour;
 

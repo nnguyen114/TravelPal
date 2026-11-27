@@ -40,10 +40,18 @@ public class TripService {
 
     @Transactional
     public Trip create(UUID userId, String name, LocalDate start, LocalDate end, CityInput city) {
+        return create(userId, name, start, end, List.of(city));
+    }
+
+    /** A new trip with its cities in order; the creator owns it. */
+    @Transactional
+    public Trip create(UUID userId, String name, LocalDate start, LocalDate end, List<CityInput> cityList) {
         checkDates(start, end);
         Trip trip = trips.save(new Trip(name, start, end, userId));
         members.save(new TripMember(trip.getId(), userId, TripRole.OWNER));
-        saveCity(trip, new TripCity(trip.getId(), 0), city);
+        for (int i = 0; i < cityList.size(); i++) {
+            saveCity(trip, new TripCity(trip.getId(), i), cityList.get(i));
+        }
         history.record(trip.getId(), userId, "TRIP_CREATED", "created the trip", null, null);
         return trip;
     }
@@ -96,6 +104,8 @@ public class TripService {
         history.record(tripId, userId, "TRIP_UPDATED", datesChanged ? "changed the trip dates" : "renamed the trip to " + trip.getName(), null, null);
         // The version bump makes edits (and undos) based on the old placement fail instead of overwriting this.
         em.createQuery("update Destination d set d.dayIndex = null, d.position = null, d.version = d.version + 1 where d.tripId = ?1 and d.dayIndex >= ?2")
+            .setParameter(1, tripId).setParameter(2, trip.dayCount()).executeUpdate();
+        em.createQuery("update ItineraryEntry e set e.dayIndex = null, e.version = e.version + 1 where e.tripId = ?1 and e.dayIndex >= ?2")
             .setParameter(1, tripId).setParameter(2, trip.dayCount()).executeUpdate();
         return trip;
     }

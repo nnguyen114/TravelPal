@@ -20,9 +20,12 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Service
 public class History {
-    public static final Set<String> UNDOABLE = Set.of("DESTINATION_ADDED", "DESTINATION_UPDATED", "DESTINATION_REMOVED", "DAY_REORDERED", "PLAN_APPLIED");
+    public static final Set<String> UNDOABLE = Set.of("DESTINATION_ADDED", "DESTINATION_UPDATED", "DESTINATION_REMOVED", "DAY_REORDERED", "PLAN_APPLIED",
+        "IMPORT_APPLIED");
 
     public record Changed(UUID tripId, UUID actorId) {}
+    /** Something a change created, at the version it was created with (undo only removes it if still unchanged). */
+    public record Ref(UUID id, long version) {}
     public record Entry(long id, UUID actorId, String actorName, String type, String summary, Instant createdAt,
                         boolean undoable, boolean undone) {}
 
@@ -38,11 +41,13 @@ public class History {
         this.json = json;
     }
 
+    /** Returns the new event's id. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void record(UUID tripId, UUID actorId, String type, String summary, Object before, Object after) {
-        events.save(new TripEvent(tripId, actorId, type, summary, write(before), write(after)));
+    public long record(UUID tripId, UUID actorId, String type, String summary, Object before, Object after) {
+        TripEvent e = events.save(new TripEvent(tripId, actorId, type, summary, write(before), write(after)));
         em.createQuery("update Trip t set t.version = t.version + 1 where t.id = ?1").setParameter(1, tripId).executeUpdate();
         publisher.publishEvent(new Changed(tripId, actorId));
+        return e.getId();
     }
 
     @Transactional(readOnly = true)

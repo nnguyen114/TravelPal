@@ -1,5 +1,7 @@
 package com.travelpal.destination;
 
+import com.travelpal.entry.EntryService;
+import com.travelpal.entry.ItineraryEntry;
 import com.travelpal.history.History;
 import com.travelpal.history.TripEvent;
 import com.travelpal.trip.TripAccess;
@@ -11,6 +13,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -19,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.JsonNode;
 
 @Service
 public class DestinationService {
@@ -56,12 +60,14 @@ public class DestinationService {
     private final TripAccess access;
     private final TripService trips;
     private final History history;
+    private final EntryService entries;
 
-    DestinationService(DestinationRepository repo, TripAccess access, TripService trips, History history) {
+    DestinationService(DestinationRepository repo, TripAccess access, TripService trips, History history, EntryService entries) {
         this.repo = repo;
         this.access = access;
         this.trips = trips;
         this.history = history;
+        this.entries = entries;
     }
 
     @Transactional(readOnly = true)
@@ -86,6 +92,54 @@ public class DestinationService {
             d.getDayIndex() == null ? "saved " + d.getName() + " as an idea" : "added " + d.getName() + " to Day " + (d.getDayIndex() + 1),
             null, Snapshot.of(d));
         return d;
+    }
+
+    /**
+     * Adds a place without its own history event, through the same validation as {@link #add}: the caller holds the
+     * trip lock, has checked the caller is an editor, and records one event for the whole change (an import).
+     */
+    public Destination insert(UUID userId, UUID tripId, Input in) {
+        Destination d = new Destination(tripId, userId, in.providerId());
+        apply(d, in);
+        return repo.saveAndFlush(d);
+    }
+
+    /** Provider ids already in the trip (each place can be in a trip once). */
+    public Set<String> providerIds(UUID tripId) {
+        return repo.findByTrip(tripId).stream().map(Destination::getProviderId).filter(Objects::nonNull).collect(Collectors.toSet());
+    }
+
+    /**
+     * Resolves a CHOICE entry: the picked option becomes a place on the choice's day (same day, its map location if it
+     * has one) and the choice is removed, in one history event.
+     */
+    @Transactional
+    public Destination choose(UUID userId, UUID tripId, UUID entryId, int option) {
+        access.require(tripId, userId, TripRole.EDITOR);
+        ItineraryEntry choice = entries.choice(tripId, entryId);
+        JsonNode options = entries.detailsOf(choice).path("options");
+        if (option >= options.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No such option");
+        }
+        JsonNode o = options.get(option);
+        JsonNode p = o.path("place");
+        String providerId = p.path("providerId").stringValue(null);
+        if (providerId != null && providerIds(tripId).contains(providerId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, o.path("label").stringValue("That place") + " is already in this trip");
+        }
+        Integer day = choice.getDayIndex();
+        String name = p.path("name").stringValue(o.path("label").stringValue(""));
+        Destination d = insert(userId, tripId, new Input(name.isBlank() ? choice.getTitle() : name, p.path("address").stringValue(null),
+            number(p.path("lat")), number(p.path("lng")), providerId, null, null, day, null, false,
+            day == null ? Flexibility.FLEXIBLE : Flexibility.SAME_DAY, null, null, false));
+        entries.resolved(choice);
+        history.record(tripId, userId, "CHOICE_RESOLVED", "chose " + d.getName() + " for " + choice.getTitle(),
+            EntryService.Snapshot.of(choice), Snapshot.of(d));
+        return d;
+    }
+
+    private static Double number(JsonNode n) {
+        return n.isNumber() ? n.doubleValue() : null;
     }
 
     /** {@code version} must match what the editor saw, so a concurrent edit is never silently overwritten. */
@@ -134,6 +188,10 @@ public class DestinationService {
 
     record DayOrder(int dayIndex, List<UUID> ids) {}
 
+    /** The part of an IMPORT_APPLIED event's "after" that undo needs. */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    record ImportRefs(List<History.Ref> destinations, List<History.Ref> entries) {}
+
     public record PlanItem(UUID id, Integer dayIndex, Integer position, LocalTime startTime) {}
 
     record Placement(UUID id, Integer dayIndex, Integer position, LocalTime startTime, long version) {
@@ -162,6 +220,10 @@ public class DestinationService {
             if (pinned && (i.dayIndex() == null || !i.dayIndex().equals(d.getDayIndex()) || !Objects.equals(i.startTime(), d.getStartTime()))) {
                 continue;
             }
+            // A same-day plan keeps its day; its order and time may change.
+            if (d.getFlexibility() == Flexibility.SAME_DAY && d.getDayIndex() != null && !d.getDayIndex().equals(i.dayIndex())) {
+                continue;
+            }
             if (Objects.equals(d.getDayIndex(), i.dayIndex()) && Objects.equals(d.getPosition(), i.position())
                 && Objects.equals(d.getStartTime(), i.startTime())) {
                 continue;
@@ -180,6 +242,7 @@ public class DestinationService {
     public void undo(UUID userId, UUID tripId, long eventId) {
         access.require(tripId, userId, TripRole.EDITOR);
         TripEvent e = history.claimUndo(tripId, eventId);
+        String kept = "";
         switch (e.getType()) {
             case "DESTINATION_ADDED" -> {
                 Snapshot after = history.read(e.getAfter(), Snapshot.class);
@@ -216,6 +279,23 @@ public class DestinationService {
                     now.get(p.id()).scheduleAt(p.dayIndex(), p.position(), p.startTime());
                 }
             }
+            case "IMPORT_APPLIED" -> {
+                // Unlike a plan, an import is undone item by item: whatever someone changed since is kept, not a conflict.
+                ImportRefs refs = history.read(e.getAfter(), ImportRefs.class);
+                List<String> names = new ArrayList<>();
+                for (History.Ref r : refs.destinations()) {
+                    repo.findByIdAndTripId(r.id(), tripId).ifPresent(d -> {
+                        if (d.getVersion() == r.version()) {
+                            repo.delete(d);
+                        } else {
+                            names.add(d.getName());
+                        }
+                    });
+                }
+                repo.flush();
+                names.addAll(entries.removeUnchanged(tripId, refs.entries()));
+                kept = names.isEmpty() ? "" : " (kept " + String.join(", ", names) + ": changed since)";
+            }
             default -> { // DAY_REORDERED
                 DayOrder before = history.read(e.getBefore(), DayOrder.class);
                 DayOrder after = history.read(e.getAfter(), DayOrder.class);
@@ -226,7 +306,7 @@ public class DestinationService {
             }
         }
         repo.flush();
-        history.record(tripId, userId, "UNDO", "undid: " + e.getSummary(), null, Map.of("eventId", eventId));
+        history.record(tripId, userId, "UNDO", "undid: " + e.getSummary() + kept, null, Map.of("eventId", eventId));
     }
 
     private Destination current(UUID tripId, Snapshot expected) {
