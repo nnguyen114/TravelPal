@@ -492,11 +492,11 @@ NEAR_MINTEI = [row("Shimokitazawa Station", "st", category="public_transport.tra
                row("Café Shimokitazawa", "cafe"), {"address_line1": "Mintei", "lat": 35.66, "lon": 139.67, "place_id": "addr"}]
 
 
-def inferred(monkeypatch, place, area, *answers):
-    """A page Claude reads as (place, area); Geoapify answers each query in turn. Returns the queries and result."""
+def inferred(monkeypatch, place, area, *answers, city=""):
+    """A page Claude reads as (place, area, city); Geoapify answers each query in turn. Returns the queries and result."""
     public(monkeypatch)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
-    monkeypatch.setattr(links.claude, "_json_call", lambda *a: {"place": place, "area": area})
+    monkeypatch.setattr(links.claude, "_json_call", lambda *a: {"place": place, "area": area, "city": city})
     queries, answers = [], list(answers)
 
     def routes(r):
@@ -532,6 +532,26 @@ def test_place_without_an_area_is_searched_once(monkeypatch):
     assert queries == ["Tokyo Tower"] and out["candidates"][0]["name"] == "Tokyo Tower"
 
 
+def test_the_neighborhood_not_the_city_picks_the_branch(monkeypatch):
+    shinjuku, shibuya = row("Ichiran", "shinjuku", "Kabukicho, Shinjuku, Tokyo"), row("Ichiran", "shibuya", "Jinnan, Shibuya, Tokyo")
+    queries, out = inferred(monkeypatch, "Ichiran", "Shibuya", [shinjuku, shibuya], city="Tokyo")
+    assert queries == ["Ichiran Shibuya"] and [p["providerId"] for p in out["candidates"]] == ["geoapify:shibuya"]
+    queries, out = inferred(monkeypatch, "Ichiran", "Shibuya", [shinjuku], [shinjuku], city="Tokyo")
+    assert queries == ["Ichiran Shibuya", "Ichiran"] and out["candidates"] == []  # sharing Tokyo isn't enough
+    # an area given as "neighborhood, city" is judged by its neighborhood, for branch names and addresses alike
+    branch = row("Ichiran Shibuya Branch", "branch", "Shibuya, Tokyo")
+    queries, out = inferred(monkeypatch, "Ichiran", "Shibuya, Tokyo", [shinjuku, branch])
+    assert queries == ["Ichiran Shibuya"] and [p["providerId"] for p in out["candidates"]] == ["geoapify:branch"]
+    _, out = inferred(monkeypatch, "Sensō-ji", "Asakusa, Tokyo", [row("Sensō-ji", "sj", "1, Asakusa, Taito, Japan")])
+    assert out["candidates"]
+
+
+@pytest.mark.parametrize("area, city", [("", "Tokyo"), ("Tokyo", "Tokyo"), ("tokyo", "TOKYO")])
+def test_a_city_alone_asks_nothing_of_the_address(area, city, monkeypatch):
+    queries, out = inferred(monkeypatch, "Tokyo Tower", area, [row("Tokyo Tower", "tt", "Parc de Shiba, Minato, Japan")], city=city)
+    assert queries == ["Tokyo Tower"] and out["candidates"][0]["name"] == "Tokyo Tower"
+
+
 def test_search_outage_on_either_query_says_so(monkeypatch):
     outage = "Place search is unavailable right now, so we couldn't find it on the map. Try again in a minute."
     for answers in ([httpx.Response(503)], [NEAR_MINTEI, httpx.Response(503)]):
@@ -551,7 +571,7 @@ def test_search_outage_on_either_query_says_so(monkeypatch):
     ("一蘭渋谷店", "", "一蘭", "渋谷"),
     ("Ichiran", "Jinnan, Shibuya, Tokyo", "Ichiran", "Shibuya"),  # the bare name, with the area in its address
     ("Ichiran Shibuya", "Jinnan, Shibuya, Tokyo", "Ichiran Shibuya", "Shibuya"),
-    ("Sensō Ji", "1, Asakusa, Taito, Japan", "Sensō-ji", "Asakusa, Tokyo"),  # any part of the area will do
+    ("Sensō Ji", "1, Asakusa, Taito, Japan", "Sensō-ji", "Asakusa"),
 ])
 def test_names_that_are_the_place(name, address, place, area):
     assert links.same_place({"name": name, "address": address}, place, area)
