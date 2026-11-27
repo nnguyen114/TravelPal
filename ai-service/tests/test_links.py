@@ -18,7 +18,8 @@ def client(routes):
 
 
 HOSTS = {"short.link": "93.184.216.1", "site.example": "93.184.216.2", "social.example": "93.184.216.3", "a.example": "93.184.216.4",
-         "maps.app.goo.gl": "93.184.216.5", "www.google.com": "93.184.216.6", "google.com.site.example": "93.184.216.7"}
+         "maps.app.goo.gl": "93.184.216.5", "www.google.com": "93.184.216.6", "google.com.site.example": "93.184.216.7",
+         "www.tiktok.com": "93.184.216.8", "vm.tiktok.com": "93.184.216.9", "www.youtube.com": "93.184.216.10"}
 BY_IP = {v: k for k, v in HOSTS.items()}
 MAPS_MISS = "This Google Maps link doesn't identify a place we can look up. Type the place name instead."
 TOKYO = {"lat": 35.68, "lng": 139.76}
@@ -233,3 +234,143 @@ def test_place_search_outage_says_so():
     out = links.resolve("https://maps.google.com/?q=Koffee+Mameya", None, client(lambda r: httpx.Response(503)))
     assert out["guess"] == "Koffee Mameya" and out["candidates"] == []
     assert out["message"].startswith("Place search is unavailable right now")
+
+
+VIDEO_UNCLEAR = "We couldn't tell which place this video is about. Type the place name instead."
+VIDEO_BAD = "We couldn't read this video. Type the place name instead."
+TIKTOK_ONLY = "Paste a TikTok video link or type the place name instead."
+ICHIRAN = {"results": [{"name": "Ichiran Shibuya", "lat": 35.66, "lon": 139.70, "place_id": "ich",
+                        "address_line2": "Shibuya, Tokyo"}]}
+JSON = {"content-type": "application/json; charset=utf-8"}
+
+
+def oembed(monkeypatch, answer, place=None, short=None):
+    """A video's world: an optional share-link redirect, the oEmbed endpoint, Claude's reading, and Geoapify."""
+    public(monkeypatch)
+    if place is not None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+        monkeypatch.setattr(links.claude, "_json_call", lambda system, user, schema: place)
+    seen = {"pages": [], "oembed": [], "search": [], "hosts": []}
+
+    def routes(r):
+        if r.url.host == "api.geoapify.com":
+            seen["search"].append(r.url.params["text"])
+            return httpx.Response(200, json=ICHIRAN)
+        seen["hosts"].append(host(r))
+        if seen["hosts"][-1] == "vm.tiktok.com":
+            seen["pages"].append(r.url.path)
+            return httpx.Response(301, headers={"location": short})
+        assert r.url.path.startswith("/oembed"), "never the video page itself"
+        seen["oembed"].append(dict(r.url.params))
+        return answer(r) if callable(answer) else answer
+    return seen, routes
+
+
+@pytest.mark.parametrize("url, endpoint, params", [
+    ("https://www.tiktok.com/@ramen.fan/video/7106594312292453675?is_from_webapp=1&sender_device=pc", "www.tiktok.com",
+     {"url": "https://www.tiktok.com/@ramen.fan/video/7106594312292453675"}),
+    ("https://m.tiktok.com/@ramen.fan/video/7106594312292453675/", "www.tiktok.com",
+     {"url": "https://www.tiktok.com/@ramen.fan/video/7106594312292453675"}),
+    ("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s&si=share", "www.youtube.com",
+     {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "format": "json"}),
+    ("https://youtu.be/dQw4w9WgXcQ?si=share", "www.youtube.com",
+     {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "format": "json"}),
+    ("https://m.youtube.com/shorts/dQw4w9WgXcQ", "www.youtube.com",
+     {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "format": "json"}),
+])
+def test_videos_are_read_through_oembed(url, endpoint, params, monkeypatch):
+    answer = httpx.Response(200, json={"type": "video", "title": "Best ramen at Ichiran in Shibuya!! #tokyo",
+                                       "author_name": "ramen.fan", "html": "<script>x</script>"}, headers=JSON)
+    seen, routes = oembed(monkeypatch, answer, {"place": "Ichiran", "area": "Shibuya"})
+    out = links.resolve(url, TOKYO, client(routes))
+    assert seen["hosts"] == [endpoint] and seen["oembed"] == [params]
+    assert seen["search"] == ["Ichiran Shibuya"] and out["guess"] == "Ichiran" and out["message"] is None
+    assert out["candidates"][0]["name"] == "Ichiran Shibuya"
+
+
+def test_tiktok_share_links_skip_the_video_page(monkeypatch):
+    answer = httpx.Response(200, json={"type": "video", "title": "Ichiran ramen at 3am"}, headers=JSON)
+    seen, routes = oembed(monkeypatch, answer, {"place": "Ichiran", "area": "Tokyo"},
+                          short="https://www.tiktok.com/@ramen.fan/video/123?_r=1&_t=x")
+    out = links.resolve("https://vm.tiktok.com/ZMabc/", TOKYO, client(routes))
+    assert seen["pages"] == ["/ZMabc/"] and seen["oembed"] == [{"url": "https://www.tiktok.com/@ramen.fan/video/123"}]
+    assert seen["search"] == ["Ichiran"]  # "Tokyo" isn't in the caption, so it doesn't narrow the search
+    assert out["candidates"]
+
+
+@pytest.mark.parametrize("title, place", [
+    ("", {"place": "Ichiran", "area": ""}),  # titleless video: Claude isn't even asked
+    ("Tokyo food tour vlog", {"place": "", "area": "Tokyo"}),  # generic or several venues: Claude says none
+    ("Tokyo food tour vlog", {"place": "ramen.fan", "area": ""}),  # only the creator's name, which isn't in the text
+    ("Best bowl of my life", {"place": "Ichiran", "area": "Shibuya"}),  # a name Claude made up
+    ("Best ramen at Ichiran", None),  # Claude off: no title fallback for videos
+    ("Ichiranramen", {"place": "Ichiran", "area": ""}),  # not a whole phrase in the text
+])
+def test_videos_without_a_named_place_ask_the_traveler(title, place, monkeypatch):
+    answer = httpx.Response(200, json={"type": "video", "title": title, "author_name": "ramen.fan"}, headers=JSON)
+    seen, routes = oembed(monkeypatch, answer, place)
+    out = links.resolve("https://www.youtube.com/watch?v=dQw4w9WgXcQ", TOKYO, client(routes))
+    assert out == links.fail(VIDEO_UNCLEAR, readable=True) and seen["search"] == []
+
+
+def test_claude_giving_no_answer_asks_the_traveler(monkeypatch):
+    _, routes = oembed(monkeypatch, httpx.Response(200, json={"type": "video", "title": "Ichiran"}, headers=JSON))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setattr(links.claude, "_json_call", lambda *a: None)
+    assert links.resolve("https://youtu.be/dQw4w9WgXcQ", TOKYO, client(routes)) == links.fail(VIDEO_UNCLEAR, readable=True)
+
+
+@pytest.mark.parametrize("answer", [
+    httpx.Response(200, text='{"type": "video", "title": "Ichiran"}', headers={"content-type": "text/html"}),
+    httpx.Response(200, text='{"type": "video", "title": "Ichiran"}', headers={"content-type": "application/jsonp"}),
+    httpx.Response(200, text='{"type": "video", "title": ', headers=JSON),
+    httpx.Response(200, json=["video"], headers=JSON),
+    httpx.Response(200, json={"type": "rich", "title": "Ichiran"}, headers=JSON),
+    httpx.Response(200, json={"type": "video", "title": 123}, headers=JSON),
+    httpx.Response(200, content=b'{"type": "video", "title": "' + b"x" * links.MAX_BYTES + b'"}', headers=JSON),
+    httpx.Response(404, json={"error": "gone"}, headers=JSON),
+    httpx.Response(302, headers={"location": "https://site.example/oembed"}),
+    httpx.Response(302, headers={"location": "http://www.tiktok.com/oembed"}),
+])
+def test_unreadable_video_metadata(answer, monkeypatch):
+    seen, routes = oembed(monkeypatch, answer, {"place": "Ichiran", "area": ""})
+    out = links.resolve("https://www.tiktok.com/@ramen.fan/video/123", TOKYO, client(routes))
+    assert out == links.fail(VIDEO_BAD) and len(seen["oembed"]) == 1 and seen["search"] == []
+
+
+def test_oembed_redirects_within_its_origin_are_followed(monkeypatch):
+    def answer(r):
+        if r.url.path == "/oembed":
+            return httpx.Response(302, headers={"location": "/oembed/v2"})
+        return httpx.Response(200, json={"type": "video", "title": ""}, headers=JSON)
+    seen, routes = oembed(monkeypatch, answer)
+    out = links.resolve("https://www.tiktok.com/@a/video/1", None, client(routes))
+    assert seen["hosts"] == ["www.tiktok.com", "www.tiktok.com"] and out["message"] == VIDEO_UNCLEAR
+    seen, routes = oembed(monkeypatch, httpx.Response(302, headers={"location": "/oembed"}))
+    out = links.resolve("https://www.tiktok.com/@a/video/1", None, client(routes))
+    assert out["message"].startswith("That link redirects too many")
+
+
+@pytest.mark.parametrize("url", ["https://www.tiktok.com/@ramen.fan", "https://tiktok.com/@ramen.fan/",
+                                 "https://www.tiktok.com/explore", "https://www.tiktok.com/tag/ramen"])
+def test_tiktok_links_that_arent_videos(url):
+    assert links.resolve(url, None, client(lambda r: 1 / 0)) == links.fail(TIKTOK_ONLY)
+
+
+def test_tiktok_share_links_to_a_profile_or_elsewhere(monkeypatch):
+    seen, routes = oembed(monkeypatch, None, short="https://www.tiktok.com/@ramen.fan?_t=x")
+    assert links.resolve("https://vm.tiktok.com/p/", None, client(routes)) == links.fail(TIKTOK_ONLY)
+    assert seen["pages"] == ["/p/"] and seen["oembed"] == []
+    seen, routes = oembed(monkeypatch, None, short="https://www.tiktok.com/login")
+    assert links.resolve("https://vm.tiktok.com/l/", None, client(routes)) == links.fail(VIDEO_BAD)
+    seen, routes = oembed(monkeypatch, None, short="https://vm.tiktok.com/again")
+    assert links.resolve("https://vm.tiktok.com/l/", None, client(routes))["message"].startswith("That link redirects too many")
+    seen, routes = oembed(monkeypatch, None, short="http://internal.local/")
+    assert links.resolve("https://vm.tiktok.com/l/", None, client(routes))["message"].startswith("That link points somewhere")
+
+
+@pytest.mark.parametrize("url", ["https://www.youtube.com/@somechannel", "https://youtu.be/short",
+                                 "https://www.youtube.com/watch?v=dQw4w9WgXc!", "https://www.youtube.com/shorts/"])
+def test_youtube_links_that_arent_videos(url):
+    assert links.resolve(url, None, client(lambda r: 1 / 0)) == links.fail(
+        "Paste a YouTube video link or type the place name instead.")
