@@ -1,7 +1,8 @@
 """Deterministic trip optimizer: groups places by distance, spreads groups over days, orders and times each day.
 
-It only schedules places the user already added. Locked or fixed plans never move. Anything that doesn't fit
-goes to a plain "couldn't fit" list; nothing is ranked by taste.
+It only schedules places the user already added. Locked or fixed plans never move; "same day" places keep their day
+but may be reordered and retimed within it. Anything that doesn't fit goes to a plain "couldn't fit" list; nothing is
+ranked by taste.
 """
 
 import math
@@ -40,6 +41,7 @@ class Stop:
     after: int | None = None  # earliest sensible start, e.g. 19:00 for a bar district
     before: int | None = None  # latest sensible end, e.g. 11:00 for a morning market
     day_trip: bool = False
+    same_day: bool = False  # SAME_DAY flexibility on a scheduled day: never changes day, never unscheduled
 
     @property
     def bucket(self) -> int:
@@ -177,7 +179,8 @@ def optimize(job: dict, constraints: Constraints | None = None) -> dict:
                 dur += extra
         stops.append(Stop(d["id"], d["name"], d.get("lat"), d.get("lng"), dur, d.get("dayIndex"), d.get("position"),
                           hhmm(d.get("startTime")), d.get("locked") or d.get("flexibility") == "FIXED",
-                          after=hhmm(d.get("visitAfter")), before=hhmm(d.get("visitBefore")), day_trip=bool(d.get("dayTrip"))))
+                          after=hhmm(d.get("visitAfter")), before=hhmm(d.get("visitBefore")), day_trip=bool(d.get("dayTrip")),
+                          same_day=d.get("flexibility") == "SAME_DAY" and d.get("dayIndex") is not None))
         if stops[-1].day_trip and d.get("durationMin") is None:
             stops[-1].duration = DAY_TRIP_MINUTES
     before = {s.id: (s.day, s.position, s.start) for s in stops}
@@ -185,7 +188,8 @@ def optimize(job: dict, constraints: Constraints | None = None) -> dict:
     for s in stops:
         in_scope = (scope == "TRIP" or (scope == "DAY" and s.day == job.get("dayIndex"))
                     or (scope == "SELECTION" and s.id in selected))
-        s.movable = in_scope and not s.pinned
+        # Outside a day run, a same-day stop stays with its day's fixed stops: ordered and timed there, never moved.
+        s.movable = in_scope and not s.pinned and not (s.same_day and scope != "DAY")
 
     needs_review = []
     for s in stops:

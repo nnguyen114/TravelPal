@@ -188,3 +188,26 @@ def test_tagged_day_trip_without_free_day_needs_review():
     assert by_id(out)["Kamakura"]["dayIndex"] is None
     assert out["needsReview"] == [{"id": "Kamakura", "reason": "Day trip needs a free day of its own"}]
     assert out["unscheduled"] == []
+
+
+def test_same_day_stops_keep_their_day_in_a_trip_run_but_are_reordered():
+    # Asakusa stops planned on two different days, in a deliberately bad order: a free optimizer would group them.
+    pinned_days = [dest(n, la, lo, dayIndex=i % 2, position=i // 2, flexibility="SAME_DAY") for i, (n, la, lo) in enumerate(ASAKUSA)]
+    far_first = [dest(*SHINJUKU[0], dayIndex=0, position=5, flexibility="SAME_DAY"),
+                 dest(*SHINJUKU[1], dayIndex=0, position=0, flexibility="SAME_DAY")]
+    out = optimize(job(pinned_days + far_first + [dest(*p) for p in HARAJUKU], days=3, mode="RELAXED"))
+    r = by_id(out)
+    for d in pinned_days + far_first:
+        assert r[d["id"]]["dayIndex"] == d["dayIndex"], d["id"]  # never another day, never unscheduled
+    day0 = sorted((i for i in r.values() if i["dayIndex"] == 0), key=lambda i: i["position"])
+    assert abs(r["Shinjuku Gyoen"]["position"] - r["Omoide Yokocho"]["position"]) == 1  # reordered within the day
+    assert all(i["startTime"] for i in day0)
+    assert not set(out["unscheduled"]) & {d["id"] for d in pinned_days + far_first}
+
+
+def test_same_day_stops_move_freely_in_a_day_run_and_ideas_are_ordinary():
+    stops = [dest(n, la, lo, dayIndex=0, position=i, flexibility="SAME_DAY") for i, (n, la, lo) in enumerate(SHINJUKU[:2] + ASAKUSA[:1])]
+    r = by_id(optimize(job(stops, days=1, scope="DAY", dayIndex=0)))
+    assert {i["dayIndex"] for i in r.values()} == {0}
+    idea = dest(*HARAJUKU[0], flexibility="SAME_DAY")
+    assert by_id(optimize(job([idea], days=1)))["Meiji Jingu"]["dayIndex"] == 0
