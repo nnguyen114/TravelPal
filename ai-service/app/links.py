@@ -176,9 +176,10 @@ def norm(text: str) -> str:
 
 
 def stated(phrase: str, text: str) -> bool:
-    """The phrase is written in the text as a whole phrase (Latin words can't match inside longer words)."""
+    """The phrase is written in the text as a whole phrase: in any script, it starts and ends at the text's edge,
+    a space or punctuation. A name run into unspaced text (大阪駅 in 新大阪駅) has no boundary we can trust."""
     p = norm(phrase)
-    return bool(p) and re.search(rf"(?<![a-z0-9]){re.escape(p)}(?![a-z0-9])", norm(text)) is not None
+    return bool(p) and re.search(rf"(?<!\S){re.escape(p)}(?!\S)", norm(text)) is not None
 
 
 def guess(text: str, url: str = "", video: bool = False, title: str = "") -> tuple[str, str]:

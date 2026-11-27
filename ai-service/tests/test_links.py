@@ -308,12 +308,21 @@ def test_tiktok_share_links_skip_the_video_page(monkeypatch):
     ("Best bowl of my life", {"place": "Ichiran", "area": "Shibuya"}),  # a name Claude made up
     ("Best ramen at Ichiran", None),  # Claude off: no title fallback for videos
     ("Ichiranramen", {"place": "Ichiran", "area": ""}),  # not a whole phrase in the text
+    ("新大阪駅のラーメン", {"place": "大阪駅", "area": ""}),  # shortened from 新大阪駅
+    ("新大阪駅のラーメン", {"place": "新大阪駅", "area": ""}),  # run into unspaced text: no boundary to trust
 ])
 def test_videos_without_a_named_place_ask_the_traveler(title, place, monkeypatch):
     answer = httpx.Response(200, json={"type": "video", "title": title, "author_name": "ramen.fan"}, headers=JSON)
     seen, routes = oembed(monkeypatch, answer, place)
     out = links.resolve("https://www.youtube.com/watch?v=dQw4w9WgXcQ", TOKYO, client(routes))
     assert out == links.fail(VIDEO_UNCLEAR, readable=True) and seen["search"] == []
+
+
+def test_a_fully_cited_name_in_another_script_counts(monkeypatch):
+    answer = httpx.Response(200, json={"type": "video", "title": "「新大阪駅」で一杯 #大阪"}, headers=JSON)
+    seen, routes = oembed(monkeypatch, answer, {"place": "新大阪駅", "area": "大阪", "city": ""})
+    links.resolve("https://youtu.be/dQw4w9WgXcQ", TOKYO, client(routes))
+    assert seen["search"] == ["新大阪駅 大阪", "新大阪駅"]  # 大阪 is a whole hashtag, not the end of 新大阪
 
 
 def test_claude_giving_no_answer_asks_the_traveler(monkeypatch):
