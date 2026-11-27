@@ -205,6 +205,21 @@ def test_blocks_private_addresses_and_unreadable_pages(monkeypatch):
     assert "couldn't be reached" in down["message"]
 
 
+BLOCKED = "That link points somewhere we can't open. Type the place name instead."
+
+
+@pytest.mark.parametrize("location", ["http://[::1", "https://[bad/x", "//[zz"])
+def test_malformed_redirects_are_blocked(location, monkeypatch):
+    public(monkeypatch)
+    fetched = []
+    redirect = lambda r: fetched.append(host(r)) or httpx.Response(302, headers={"location": location})  # noqa: E731
+    assert links.resolve("https://a.example/p", None, client(redirect)) == links.fail(BLOCKED)
+    assert fetched == ["a.example"]  # the malformed target is never requested
+    seen, routes = oembed(monkeypatch, httpx.Response(302, headers={"location": location}), {"place": "Ichiran", "area": ""})
+    assert links.resolve("https://www.tiktok.com/@a/video/1", None, client(routes)) == links.fail(BLOCKED)
+    assert seen["hosts"] == ["www.tiktok.com"] and seen["search"] == []
+
+
 def test_page_without_a_place(monkeypatch):
     public(monkeypatch)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")

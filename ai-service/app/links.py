@@ -125,7 +125,10 @@ def fetch(url: str, http: httpx.Client, stop=None, want: str = "html") -> tuple[
             with http.stream("GET", pinned, timeout=6, follow_redirects=False,
                              headers={"Host": u.netloc.rsplit("@", 1)[-1]}, extensions={"sni_hostname": u.hostname}) as r:
                 if r.is_redirect and r.headers.get("location"):
-                    url = urljoin(url, r.headers["location"])
+                    try:
+                        url = urljoin(url, r.headers["location"])
+                    except ValueError as e:  # a Location header that isn't a URL
+                        raise Unreadable("blocked") from e
                     continue
                 kind = r.headers.get("content-type", "")
                 if r.status_code != 200 or ("html" not in kind if want == "html"
@@ -139,6 +142,8 @@ def fetch(url: str, http: httpx.Client, stop=None, want: str = "html") -> tuple[
                 return url, body.decode(r.encoding or "utf-8", errors="replace")
         except httpx.InvalidURL as e:
             raise Unreadable("blocked") from e
+        except httpx.RemoteProtocolError as e:  # httpx parses Location itself, even when not following it
+            raise Unreadable("blocked" if str(e).startswith("Invalid URL in location header") else "unreachable") from e
         except httpx.HTTPError as e:
             raise Unreadable("unreachable") from e
     raise Unreadable("redirects")
