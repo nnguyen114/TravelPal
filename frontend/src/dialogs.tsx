@@ -130,7 +130,7 @@ export function PlaceSearch({ label, bias, onPick, required = true, initial = ''
   )
 }
 
-/** Paste a Maps/TikTok/Instagram/website link; we suggest matching places and the traveler confirms one. */
+/** Paste a Maps/TikTok/YouTube/website link; we suggest matching places and the traveler confirms one. */
 function LinkImport({ trip, onPick }: { trip: Trip; onPick: (p: Place) => void }) {
   const [url, setUrl] = useState('')
   const lookup = useMutation({
@@ -139,7 +139,7 @@ function LinkImport({ trip, onPick }: { trip: Trip; onPick: (p: Place) => void }
   const r = lookup.data
   return (
     <div className="field">
-      <label htmlFor="link-url">Or paste a link (Maps, TikTok, Instagram, a website)</label>
+      <label htmlFor="link-url">Or paste a link (Google Maps, TikTok video, YouTube video, a website)</label>
       <div className="row" style={{ flexWrap: 'nowrap' }}>
         <input id="link-url" type="url" style={{ flex: 1 }} value={url} maxLength={2000} placeholder="https://"
           onChange={(e) => setUrl(e.target.value)} />
