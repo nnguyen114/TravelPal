@@ -15,7 +15,8 @@ export class ApiError extends Error {
 async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers)
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
-  if (init.body) headers.set('Content-Type', 'application/json')
+  // A FormData body (a file upload) gets its multipart Content-Type, with the boundary, from the browser.
+  if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   return fetch(path, { ...init, headers, credentials: 'same-origin' })
 }
 
@@ -60,6 +61,15 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   let res = await send(path, req)
   if (res.status === 401 && accessToken && (await refreshSession())) {
     res = await send(path, req)
+  }
+  return parse<T>(res)
+}
+
+/** POSTs a multipart form, e.g. a file upload. */
+export async function postForm<T>(path: string, form: FormData): Promise<T> {
+  let res = await send(path, { method: 'POST', body: form })
+  if (res.status === 401 && accessToken && (await refreshSession())) {
+    res = await send(path, { method: 'POST', body: form })
   }
   return parse<T>(res)
 }

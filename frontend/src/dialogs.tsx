@@ -337,6 +337,7 @@ export function EditDestinationDialog({ trip, dest, onClose, onMoreLikeThis }: {
             <select name="flexibility" defaultValue={dest.flexibility}>
               <option value="FLEXIBLE">Flexible</option>
               <option value="PREFERRED">Preferred time</option>
+              <option value="SAME_DAY">Same day</option>
               <option value="FIXED">Fixed</option>
             </select>
           </label>

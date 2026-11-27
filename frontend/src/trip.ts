@@ -1,4 +1,4 @@
-import type { City, Destination, DestinationInput, Trip } from './types'
+import type { City, Destination, DestinationInput, DraftItem, Entry, EntryDetails, Trip } from './types'
 
 export const DAY_COLORS = ['#14A098', '#F2734E', '#7C6CF0', '#D69A1E', '#3B7FC4', '#D9548A', '#5E9E3B']
 export const dayColor = (i: number) => DAY_COLORS[i % DAY_COLORS.length]
@@ -98,4 +98,48 @@ export function countdown(start: string, end: string, today: Date): string {
   if (toStart === 1) return 'Tomorrow'
   if (-toStart < length) return `Day ${1 - toStart} of ${length}`
   return 'Done. Hope it was great'
+}
+
+/** The date a number of days after (or before) an ISO date. */
+export function shiftDate(isoDate: string, days: number): string {
+  const d = parse(isoDate)
+  d.setDate(d.getDate() + days)
+  return iso(d)
+}
+
+export const daysBetween = (from: string, to: string) => Math.round((parse(to).getTime() - parse(from).getTime()) / 86_400_000)
+
+/** "Dec 25" */
+export const formatShort = (isoDate: string) => parse(isoDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+/** "20:30" -> "8:30 PM" */
+export function ampm(t: string): string {
+  const h = Number(t.slice(0, 2))
+  return `${h % 12 || 12}:${t.slice(3, 5)} ${h < 12 ? 'AM' : 'PM'}`
+}
+
+/** A day's entries: notes first, then flights, lodging and meals by time, then open choices. */
+export function entriesForDay(entries: Entry[], dayIndex: number | null): Entry[] {
+  const rank = (e: Entry) => (e.kind === 'NOTE' ? 0 : e.kind === 'CHOICE' ? 2 : 1)
+  return entries.filter((e) => e.dayIndex === dayIndex).sort((a, b) =>
+    rank(a) - rank(b) || (a.startTime ?? '99').localeCompare(b.startTime ?? '99') || a.position - b.position)
+}
+
+/** Icon and spoken name for each kind of itinerary row. */
+export const KIND: Record<DraftItem['kind'], [string, string]> = {
+  PLACE: ['📍', 'Place'], FLIGHT: ['✈️', 'Flight'], LODGING: ['🛏️', 'Hotel'], MEAL: ['🍽️', 'Meal'], CHOICE: ['🤔', 'Still to decide'],
+  NOTE: ['📝', 'Note'],
+}
+const LODGING = { CHECK_IN: 'Check-in', CHECK_OUT: 'Check-out', DROP_OFF: 'Bag drop-off' }
+
+/** One line under an entry's title: "LAX → HND · arrives Dec 25, 3:20 PM", "Ueno or Asakusa", "Check-in · Hotel Gracery". */
+export function entrySummary(kind: DraftItem['kind'], d: EntryDetails | undefined, date: string | null): string {
+  if (!d) return ''
+  if (kind === 'FLIGHT' && d.arrives) {
+    const day = d.arrivesDay && date ? `${formatShort(shiftDate(date, d.arrivesDay))}, ` : ''
+    return [d.number, `arrives ${day}${ampm(d.arrives)}`].filter(Boolean).join(' · ')
+  }
+  if (kind === 'LODGING') return [d.action && LODGING[d.action], d.hotel].filter(Boolean).join(' · ')
+  if (kind === 'MEAL') return (d.areas ?? []).join(' or ')
+  return ''
 }

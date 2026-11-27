@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { flushSync } from 'react-dom'
-import { Link, useParams } from 'react-router'
+import { Link, useLocation, useParams } from 'react-router'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { AddDestinationDialog, EditDestinationDialog, InviteDialog } from '../dialogs'
@@ -10,9 +10,10 @@ import { useTripLive } from '../live'
 import { Empty } from '../art'
 import { AskAiButton, AssistantDrawer } from '../assistant'
 import { PaceSwitch, useOptimize } from '../optimize'
-import { bestTime, byDay, canEdit, cityForDay, countdown, dayColor, dayDate, formatDay, formatDuration, formatRange, freeTime, toInput } from '../trip'
+import { bestTime, byDay, canEdit, cityForDay, countdown, dayColor, dayDate, entriesForDay, formatDay, formatDuration, formatRange, freeTime, toInput } from '../trip'
+import { EntryList } from '../entries'
 import { DiscoverSheet, type DiscoverAsk } from '../discover'
-import type { Destination, Mode, Trip } from '../types'
+import type { Destination, Entry, HistoryEntry, ImportResult, Mode, Trip } from '../types'
 import { SuggestionsTab, useProposalCounts } from './Suggestions'
 import { ActivityTab, MembersTab } from './CollabTabs'
 
@@ -57,6 +58,7 @@ function TripHeader({ trip, tab, openProposals }: { trip: Trip; tab: Tab; openPr
               ))}
               {others.length > 3 && <span className="avatar" style={{ background: 'var(--soft)', marginLeft: -8 }}>+{others.length - 3}</span>}
             </div>
+            {canEdit(trip) && <Link className="btn" to={`/trips/${trip.id}/import`}>Import</Link>}
             {canEdit(trip) && <button className="btn" onClick={() => setInviting(true)}><LinkIcon /> Invite</button>}
             <Link to="/trips" className="me-link" title="My Trips">
               <span className="avatar" aria-hidden="true">{user?.displayName.slice(0, 1).toUpperCase()}</span>
@@ -116,8 +118,8 @@ function useReorder(trip: Trip) {
   })
 }
 
-function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEdit, onOptimize, onFindMore }: {
-  trip: Trip; index: number; stops: Destination[]; active: boolean; selectedId: string | null
+function DayCard({ trip, index, stops, entries, active, selectedId, onSelect, onAdd, onEdit, onOptimize, onFindMore }: {
+  trip: Trip; index: number; stops: Destination[]; entries: Entry[]; active: boolean; selectedId: string | null
   onSelect: (id: string) => void; onAdd: () => void; onEdit: (d: Destination) => void; onOptimize: () => void
   onFindMore: (free: string) => void
 }) {
@@ -134,7 +136,7 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
   }
 
   const city = cityForDay(trip.cities, date)?.name
-  if (stops.length === 0) {
+  if (stops.length === 0 && entries.length === 0) {
     // Long trips have many open days: keep them to one slim row each so the planned days stand out.
     return (
       <article className="card day-card day-empty" data-day={index} data-active={active} aria-labelledby={`day-${index}`} style={{ '--c': color } as CSSProperties}>
@@ -155,9 +157,10 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
           <h2 id={`day-${index}`} style={{ fontSize: 18, fontWeight: 800 }}>Day {index + 1}</h2>
           <span className="muted" style={{ fontSize: 14, fontWeight: 500 }}>{formatDay(date)} · {cityForDay(trip.cities, date)?.name}</span>
         </div>
-        <span className="muted" style={{ fontSize: 13, fontWeight: 600 }}>{stops.length} {stops.length === 1 ? 'stop' : 'stops'}</span>
+        {stops.length > 0 && <span className="muted" style={{ fontSize: 13, fontWeight: 600 }}>{stops.length} {stops.length === 1 ? 'stop' : 'stops'}</span>}
       </div>
-      <ol style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <EntryList trip={trip} entries={entries} date={date} />
+      {stops.length > 0 && <ol style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {stops.map((s, i) => (
           <li key={s.id} className="stop" data-selected={s.id === selectedId} data-stop={s.id}>
             <span className="num" style={{ background: color }}>{i + 1}</span>
@@ -181,7 +184,7 @@ function DayCard({ trip, index, stops, active, selectedId, onSelect, onAdd, onEd
             </span>
           </li>
         ))}
-      </ol>
+      </ol>}
       {free && (
         <div className="free-time">
           <span><strong>Free time</strong> · {free.from} – {free.to}, nothing planned</span>
@@ -246,12 +249,15 @@ function DayPicker({ trip, days, active, onPick }: {
   )
 }
 
-function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destination[] }) {
+function Itinerary({ trip, destinations, entries, firstDay }: {
+  trip: Trip; destinations: Destination[]; entries: Entry[]; firstDay: number | null
+}) {
   const days = useMemo(() => byDay(trip, destinations), [trip, destinations])
   const [mode, setMode] = useState<Mode>('BALANCED')
   const optimize = useOptimize(trip.id)
   const unscheduled = destinations.filter((d) => d.dayIndex === null).length
-  const [activeDay, setActiveDay] = useState<number | null>(0)
+  const undated = entriesForDay(entries, null)
+  const [activeDay, setActiveDay] = useState<number | null>(firstDay ?? 0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [adding, setAdding] = useState<number | null | undefined>(undefined)
   const [editing, setEditing] = useState<Destination | null>(null)
@@ -272,6 +278,11 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
     list.current?.querySelectorAll('[data-day]').forEach((el) => io.observe(el))
     return () => io.disconnect()
   }, [days.length, stack])
+
+  // Arriving from an import: open on its first imported day.
+  useEffect(() => {
+    if (firstDay !== null) list.current?.querySelector(`[data-day="${firstDay}"]`)?.scrollIntoView({ block: 'start' })
+  }, [firstDay])
 
   /** Show a day on the map and bring it into view in the itinerary. */
   function pickDay(day: number | null) {
@@ -311,11 +322,17 @@ function Itinerary({ trip, destinations }: { trip: Trip; destinations: Destinati
           </div>
         )}
         {days.map((stops, i) => (
-          <DayCard key={i} trip={trip} index={i} stops={stops} active={activeDay === i} selectedId={selectedId}
+          <DayCard key={i} trip={trip} index={i} stops={stops} entries={entriesForDay(entries, i)} active={activeDay === i} selectedId={selectedId}
             onSelect={(id) => { setSelectedId(id); setActiveDay(i) }} onAdd={() => setAdding(i)} onEdit={setEditing}
             onOptimize={() => optimize.mutate({ mode, scope: 'DAY', dayIndex: i })}
             onFindMore={(free) => setDiscover({ dayIndex: i, context: `Near Day ${i + 1} · free ${free}` })} />
         ))}
+        {undated.length > 0 && (
+          <section className="card day-card" aria-labelledby="undated-notes">
+            <h2 id="undated-notes" style={{ fontSize: 18, fontWeight: 800 }}>Not on a day</h2>
+            <EntryList trip={trip} entries={undated} date={null} />
+          </section>
+        )}
         {unscheduled > 0 && (
           <div className="spread" style={{ background: 'var(--accent-soft)', borderRadius: 20, padding: '18px 22px' }}>
             <div>
@@ -460,8 +477,39 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
   )
 }
 
+/** "Imported 23 places and 9 notes. Undo": shown once after an import, with the same Undo as in Activity. */
+function ImportToast({ trip, result }: { trip: Trip; result: ImportResult }) {
+  const qc = useQueryClient()
+  const [closed, setClosed] = useState(false)
+  const undo = useMutation({
+    mutationFn: async () => {
+      const events = await api<HistoryEntry[]>(`/api/trips/${trip.id}/events?limit=20`)
+      const ev = events.find((e) => e.type === 'IMPORT_APPLIED' && e.undoable)
+      if (!ev) throw new Error('This import was already undone.')
+      await api(`/api/trips/${trip.id}/events/${ev.id}/undo`, { method: 'POST' })
+    },
+    onSettled: () => {
+      for (const key of ['destinations', 'entries', 'events', 'trip']) qc.invalidateQueries({ queryKey: [key, trip.id] })
+    },
+  })
+  if (closed) return null
+  const n = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`
+  const skipped = result.skipped.length
+  return (
+    <div className="toast" role="status">
+      <span>
+        {undo.isSuccess ? 'Import undone.' : undo.error ? undo.error.message
+          : `Imported ${n(result.added.places, 'place')} and ${n(result.added.entries, 'note')}.${skipped ? ` ${n(skipped, 'place')} already in the trip ${skipped === 1 ? 'was' : 'were'} skipped.` : ''}`}
+      </span>
+      {!undo.isSuccess && canEdit(trip) && <button className="btn btn-soft" disabled={undo.isPending} onClick={() => undo.mutate()}>Undo</button>}
+      <button className="icon-btn" aria-label="Dismiss" onClick={() => setClosed(true)}>×</button>
+    </div>
+  )
+}
+
 export function TripPage({ tab }: { tab: Tab }) {
   const { tripId } = useParams()
+  const imported = (useLocation().state as { imported?: ImportResult } | null)?.imported
   const [askOpen, setAskOpen] = useState(false)
   const askButton = useRef<HTMLButtonElement>(null)
   /** Shows Ask AI again first, so keyboard focus can land back on it. */
@@ -473,6 +521,8 @@ export function TripPage({ tab }: { tab: Tab }) {
   const trip = useQuery({ queryKey: ['trip', tripId], queryFn: () => api<Trip>(`/api/trips/${tripId}`) })
   const destinations = useQuery({ queryKey: ['destinations', tripId], queryFn: () => api<Destination[]>(`/api/trips/${tripId}/destinations`) })
   const proposals = useProposalCounts(tripId)
+  // Entries never block the page: without them the trip still shows its places.
+  const entries = useQuery({ queryKey: ['entries', tripId], queryFn: () => api<Entry[]>(`/api/trips/${tripId}/entries`) })
 
   if (trip.error || destinations.error) {
     return (
@@ -486,7 +536,8 @@ export function TripPage({ tab }: { tab: Tab }) {
   return (
     <>
       <TripHeader trip={trip.data} tab={tab} openProposals={proposals.data?.OPEN ?? 0} />
-      {tab === 'main' && <Itinerary trip={trip.data} destinations={destinations.data} />}
+      {tab === 'main' && <Itinerary trip={trip.data} destinations={destinations.data} entries={entries.data ?? []} firstDay={imported?.firstDayIndex ?? null} />}
+      {imported && <ImportToast trip={trip.data} result={imported} />}
       {tab === 'destinations' && <DestinationsTab trip={trip.data} destinations={destinations.data} />}
       {tab === 'suggestions' && <SuggestionsTab trip={trip.data} destinations={destinations.data} />}
       {tab === 'members' && <MembersTab trip={trip.data} />}

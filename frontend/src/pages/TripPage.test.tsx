@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
-import { dest, json, mockApi, renderAt, trip } from '../test-utils'
+import { dest, entry, json, mockApi, renderAt, trip } from '../test-utils'
 import { TripPage } from './TripPage'
 
 vi.mock('../map/TripMap', () => ({
@@ -230,4 +230,93 @@ it('marks places without a map location and lets you place them from the edit di
   await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
   await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body)
     .toMatchObject({ lat: 35.32, lng: 139.55, address: 'Kanagawa, Japan', providerId: 'osm:R1', dayIndex: 1 }))
+})
+
+const entries = [
+  entry('LAX → HND', 0, { kind: 'FLIGHT', startTime: '10:15:00', details: { from: 'LAX', to: 'HND', arrivesDay: 1, arrives: '15:20' } }),
+  entry('Vincent bday', 1),
+  entry('Dinner', 1, { kind: 'MEAL', position: 2, startTime: '19:00:00', details: { slot: 'DINNER', areas: ['Ebisu', 'Nakameguro'] } }),
+  entry('Check in hotel', 1, { kind: 'LODGING', position: 1, startTime: '15:00:00', details: { action: 'CHECK_IN', hotel: null } }),
+  entry('Something in between', 1, { kind: 'CHOICE', position: 3, details: { options: [
+    { label: 'Shibuya Sky', place: null }, { label: 'Pokemon Center', place: null }], resolved: false } }),
+  entry('Pack an adapter', null),
+]
+
+it('shows entries on day cards: notes first, then by time, with Choose on a choice', async () => {
+  const calls = api({}, {
+    'GET /api/trips/t1/entries': () => json(200, entries),
+    'POST /api/trips/t1/entries/Something in between/choose': () => json(200, dest('Pokemon Center', 1, 0)),
+  })
+  renderAt('/trips/t1', routes)
+  const day1 = await screen.findByRole('article', { name: 'Day 1' })
+  expect(within(day1).getByText('arrives Jun 11, 3:20 PM')).toBeInTheDocument()
+  // Day 2 had no stops; its entries still give it a full card.
+  const day2 = screen.getByRole('article', { name: 'Day 2' })
+  expect(within(day2).queryByText('Nothing planned yet.')).not.toBeInTheDocument()
+  const rows = within(within(day2).getByRole('list', { name: 'Plans and notes' })).getAllByRole('listitem')
+  expect(rows.map((r) => r.textContent)).toEqual([
+    expect.stringContaining('Vincent bday'), expect.stringContaining('Check in hotel'), expect.stringContaining('Ebisu or Nakameguro'),
+    expect.stringContaining('Something in between')])
+  expect(within(rows[1]).getByText('Check-in')).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'Not on a day' })).toHaveTextContent('Pack an adapter')
+
+  await userEvent.click(within(day2).getByRole('button', { name: 'Choose Pokemon Center' }))
+  await waitFor(() => expect(calls.find((c) => c.url.endsWith('/choose'))?.body).toEqual({ option: 1 }))
+})
+
+it('edits and removes an entry, and viewers only read', async () => {
+  const calls = api({}, {
+    'GET /api/trips/t1/entries': () => json(200, entries),
+    'PUT /api/trips/t1/entries/Vincent bday': (b) => json(200, b),
+    'DELETE /api/trips/t1/entries/Vincent bday': () => new Response(null, { status: 204 }),
+  })
+  renderAt('/trips/t1', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Edit Vincent bday' }))
+  const title = screen.getByLabelText('Title')
+  await userEvent.clear(title)
+  await userEvent.type(title, "Vincent's birthday")
+  await userEvent.type(screen.getByLabelText('Time'), '19:00')
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(calls.find((c) => c.method === 'PUT' && c.url.includes('/entries/'))?.body)
+    .toEqual({ version: 0, title: "Vincent's birthday", dayIndex: 1, startTime: '19:00' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Edit Vincent bday' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Remove' }))
+  await waitFor(() => expect(calls.some((c) => c.method === 'DELETE' && c.url.includes('/entries/Vincent bday?version=0'))).toBe(true))
+})
+
+it('viewers see entries without edit or choose buttons', async () => {
+  api({ role: 'VIEWER' }, { 'GET /api/trips/t1/entries': () => json(200, entries) })
+  renderAt('/trips/t1', routes)
+  const day2 = await screen.findByRole('article', { name: 'Day 2' })
+  expect(within(day2).getByText('Shibuya Sky')).toBeInTheDocument()
+  expect(within(day2).queryByRole('button', { name: /Choose|Edit/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'Import' })).not.toBeInTheDocument()
+})
+
+it('after an import, opens on its first day with a toast whose Undo reverses it', async () => {
+  const calls = api({}, {
+    'GET /api/trips/t1/events': () => json(200, [{ id: 7, type: 'IMPORT_APPLIED', undoable: true, summary: 'imported 2 places and 1 note' }]),
+    'POST /api/trips/t1/events/7/undo': () => new Response(null, { status: 204 }),
+  })
+  const scroll = vi.fn()
+  Element.prototype.scrollIntoView = scroll
+  const imported = { tripId: 't1', firstDayIndex: 2, added: { places: 2, entries: 1 }, skipped: [{ name: 'Senso-ji', reason: 'Already in this trip' }] }
+  renderAt({ pathname: '/trips/t1', state: { imported } }, routes)
+  const toast = await screen.findByText('Imported 2 places and 1 note. 1 place already in the trip was skipped.')
+  expect(screen.getByRole('article', { name: 'Day 3' })).toHaveAttribute('data-active', 'true')
+  expect(scroll).toHaveBeenCalled()
+  expect(screen.getByRole('link', { name: 'Import' })).toHaveAttribute('href', '/trips/t1/import')
+  await userEvent.click(within(toast.closest('.toast') as HTMLElement).getByRole('button', { name: 'Undo' }))
+  expect(await screen.findByText('Import undone.')).toBeInTheDocument()
+  expect(calls.some((c) => c.url === '/api/trips/t1/events/7/undo')).toBe(true)
+})
+
+it('offers Same day in the edit dialog', async () => {
+  const calls = api()
+  renderAt('/trips/t1', routes)
+  const day1 = await screen.findByRole('article', { name: 'Day 1' })
+  await userEvent.click(within(day1).getAllByRole('button', { name: 'Edit' })[0])
+  await userEvent.selectOptions(screen.getByLabelText('Flexibility'), 'Same day')
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(calls.find((c) => c.method === 'PUT')?.body).toMatchObject({ flexibility: 'SAME_DAY' }))
 })

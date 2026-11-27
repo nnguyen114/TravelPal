@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { MemoryRouter, Routes } from 'react-router'
 import { vi } from 'vitest'
 import { AuthProvider } from './auth'
-import type { Destination, Trip } from './types'
+import type { Destination, Entry, Trip } from './types'
 
 export const json = (status: number, body?: unknown) =>
   new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -15,7 +15,7 @@ export function mockApi(routes: Record<string, Handler>) {
   const calls: { method: string; url: string; body: unknown }[] = []
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined
+    const body = init?.body instanceof FormData ? init.body : init?.body ? JSON.parse(String(init.body)) : undefined
     calls.push({ method, url, body })
     const path = url.split('?')[0]
     if (path === '/api/auth/refresh') {
@@ -28,7 +28,8 @@ export function mockApi(routes: Record<string, Handler>) {
   return calls
 }
 
-export function renderAt(path: string, routes: ReactNode) {
+/** path may carry navigation state, e.g. { pathname: '/trips/t1', state: { imported } }. */
+export function renderAt(path: string | { pathname: string; state: unknown }, routes: ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
@@ -53,4 +54,8 @@ export const dest = (id: string, dayIndex: number | null, position: number | nul
   id, name: id, address: 'Harajuku, Tokyo', lat: 35.6, lng: 139.7, providerId: null, notes: null, durationMin: 90,
   dayIndex, position, startTime: dayIndex === null ? null : '09:00:00', locked: false, flexibility: 'FLEXIBLE', version: 0,
   visitAfter: null, visitBefore: null, dayTrip: false, hintsSource: null, ...over,
+})
+
+export const entry = (id: string, dayIndex: number | null, over: Partial<Entry> = {}): Entry => ({
+  id, dayIndex, position: 0, kind: 'NOTE', title: id, startTime: null, details: {}, source: null, version: 0, ...over,
 })

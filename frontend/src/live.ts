@@ -14,6 +14,7 @@ export function useTripLive(tripId: string | undefined) {
     const refresh = () => {
       qc.invalidateQueries({ queryKey: ['trip', tripId] })
       qc.invalidateQueries({ queryKey: ['destinations', tripId] })
+      qc.invalidateQueries({ queryKey: ['entries', tripId] })
       qc.invalidateQueries({ queryKey: ['events', tripId] })
       qc.invalidateQueries({ queryKey: ['proposals', tripId] })
     }

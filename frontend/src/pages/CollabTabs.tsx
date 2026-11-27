@@ -87,6 +87,7 @@ export function ActivityTab({ trip }: { trip: Trip }) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['events', trip.id] })
       qc.invalidateQueries({ queryKey: ['destinations', trip.id] })
+      qc.invalidateQueries({ queryKey: ['entries', trip.id] })
     },
   })
 

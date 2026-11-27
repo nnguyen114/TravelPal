@@ -1,10 +1,12 @@
 import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ApiError } from './api'
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router'
+import { useState } from 'react'
+import { createBrowserRouter, Navigate, Route, RouterProvider, Routes, useLocation } from 'react-router'
 import { AuthProvider, useAuth } from './auth'
 import { AuthPage } from './pages/AuthPage'
 import { Dashboard } from './pages/Dashboard'
 import { JoinPage } from './pages/JoinPage'
+import { ImportPage } from './pages/ImportPage'
 import { Landing } from './landing/Landing'
 import { OptimizePage } from './pages/OptimizePage'
 import { TripPage } from './pages/TripPage'
@@ -42,6 +44,8 @@ function Routed() {
     <Routes>
       <Route path="/" element={<Landing signedIn />} />
       <Route path="/trips" element={<Dashboard />} />
+      <Route path="/import" element={<ImportPage />} />
+      <Route path="/trips/:tripId/import" element={<ImportPage />} />
       <Route path="/login" element={<ToTrips />} />
       <Route path="/signup" element={<ToTrips />} />
       <Route path="/trips/:tripId" element={<TripPage tab="main" />} />
@@ -58,12 +62,12 @@ function Routed() {
 }
 
 export default function App() {
+  // A data router, so a page can hold navigation while it has unsaved work (the import review).
+  const [router] = useState(() => createBrowserRouter([{ path: '*', element: <Routed /> }]))
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BrowserRouter>
-          <Routed />
-        </BrowserRouter>
+        <RouterProvider router={router} />
       </AuthProvider>
     </QueryClientProvider>
   )

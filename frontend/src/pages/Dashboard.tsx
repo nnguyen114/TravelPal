@@ -157,9 +157,12 @@ export function Dashboard() {
             <h1 style={{ fontSize: 40, fontWeight: 800, marginTop: 6 }}>My Trips</h1>
             <p className="muted" style={{ margin: '6px 0 0' }}>{upcomingLine(trips.data, today)}</p>
           </div>
-          <button className="btn btn-primary" style={{ minHeight: 48, borderRadius: 14 }} onClick={() => setCreating(true)}>
-            <PlusIcon /> Create Trip
-          </button>
+          <div className="row" style={{ gap: 10 }}>
+            <Link className="btn" style={{ minHeight: 48, borderRadius: 14 }} to="/import">Import itinerary</Link>
+            <button className="btn btn-primary" style={{ minHeight: 48, borderRadius: 14 }} onClick={() => setCreating(true)}>
+              <PlusIcon /> Create Trip
+            </button>
+          </div>
         </div>
         {trips.error && <div role="alert" className="error" style={{ marginTop: 24 }}>{trips.error.message}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24, marginTop: 36 }}>
