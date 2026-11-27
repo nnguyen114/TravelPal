@@ -1,11 +1,13 @@
 package com.travelpal.importer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
@@ -65,6 +67,20 @@ class ImportApiTest extends IntegrationTest {
         return b;
     }
 
+    /** A read that got past validation: the whole event stream, once it has ended. */
+    String stream(MockMultipartHttpServletRequestBuilder b) throws Exception {
+        var started = mvc.perform(b).andExpect(request().asyncStarted()).andReturn();
+        return mvc.perform(asyncDispatch(started)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+    }
+
+    /** The data of the stream's {@code event} ({@code draft} or {@code error}). */
+    static String data(String stream, String event) {
+        String marker = "event: " + event + "\ndata: ";
+        int at = stream.indexOf(marker);
+        assertThat(at).as("no %s event in %s", event, stream).isNotNegative();
+        return stream.substring(at + marker.length(), stream.indexOf('\n', at + marker.length()));
+    }
+
     static MockMultipartFile pdf(String content) {
         return new MockMultipartFile("file", "plan.pdf", "application/pdf", content.getBytes(StandardCharsets.ISO_8859_1));
     }
@@ -77,15 +93,16 @@ class ImportApiTest extends IntegrationTest {
 
     @Test
     void readForwardsTextWithTodayAndTripContextAndReturnsTheDraft() throws Exception {
-        String body = mvc.perform(upload(who).param("text", "DEC 25\nSenso-ji").param("tripId", tripId)).andExpect(status().isOk())
-            .andReturn().getResponse().getContentAsString();
-        assertThat(body).isEqualTo(DRAFT);
+        String body = stream(upload(who).param("text", "DEC 25\nSenso-ji").param("tripId", tripId));
+        // Progress goes out first (a long read must not look idle to the edge), then the draft.
+        assertThat(body).startsWith("event: status\n");
+        assertThat(data(body, "draft")).isEqualTo(DRAFT);
         assertThat((String) JsonPath.read(sent.get(), "$.text")).isEqualTo("DEC 25\nSenso-ji");
         assertThat((String) JsonPath.read(sent.get(), "$.today")).isEqualTo(LocalDate.now().toString());
         assertThat((String) JsonPath.read(sent.get(), "$.trip.endDate")).isEqualTo("2026-12-26");
         assertThat((List<String>) JsonPath.read(sent.get(), "$.trip.cities")).containsExactly("Tokyo");
 
-        mvc.perform(upload(who).file(pdf("%PDF-1.7\n/Type /Page\n"))).andExpect(status().isOk());
+        data(stream(upload(who).file(pdf("%PDF-1.7\n/Type /Page\n"))), "draft");
         assertThat(Base64.getDecoder().decode((String) JsonPath.read(sent.get(), "$.pdfBase64"))).startsWith("%PDF-".getBytes());
         assertThat(sent.get()).doesNotContain("\"trip\"");
     }
@@ -115,19 +132,21 @@ class ImportApiTest extends IntegrationTest {
         viewer(v);
         mvc.perform(upload(v).param("text", "plan").param("tripId", tripId)).andExpect(status().isForbidden());
         mvc.perform(upload(register()).param("text", "plan").param("tripId", tripId)).andExpect(status().isNotFound());
-        mvc.perform(upload(v).param("text", "plan")).andExpect(status().isOk()); // a new trip needs only an account
+        data(stream(upload(v).param("text", "plan")), "draft"); // a new trip needs only an account
+        // Failures after validation arrive in the stream, with the status they'd have had.
         answer(200, "{\"days\":[],\"undated\":[],\"issues\":[]}");
-        mvc.perform(upload(who).param("text", "hello")).andExpect(status().isUnprocessableContent());
+        assertThat((Integer) JsonPath.read(data(stream(upload(who).param("text", "hello")), "error"), "$.status")).isEqualTo(422);
         answer(503, "");
-        mvc.perform(upload(who).param("text", "plan")).andExpect(status().isServiceUnavailable())
-            .andExpect(jsonPath("$.detail").value("Reading your plan is unavailable right now."));
+        String outage = data(stream(upload(who).param("text", "plan")), "error");
+        assertThat((Integer) JsonPath.read(outage, "$.status")).isEqualTo(503);
+        assertThat((String) JsonPath.read(outage, "$.message")).isEqualTo("Reading your plan is unavailable right now.");
     }
 
     @Test
     void readSpendsTheImportQuota() throws Exception {
         Login heavy = register();
         for (int i = 0; i < 20; i++) {
-            mvc.perform(upload(heavy).param("text", "plan")).andExpect(status().isOk());
+            stream(upload(heavy).param("text", "plan"));
         }
         mvc.perform(upload(heavy).param("text", "plan")).andExpect(status().isTooManyRequests());
     }
@@ -190,7 +209,9 @@ class ImportApiTest extends IntegrationTest {
             .andExpect(jsonPath("$[1].kind").value("CHOICE")).andExpect(jsonPath("$[2].title").value("Vincent bday"));
         mvc.perform(auth(get(t + "/events?limit=1"), who))
             .andExpect(jsonPath("$[0].type").value("IMPORT_APPLIED")).andExpect(jsonPath("$[0].summary").value("imported 6 places and 3 notes"))
-            .andExpect(jsonPath("$[0].undoable").value(true));
+            .andExpect(jsonPath("$[0].undoable").value(true))
+            // The result names its own event, so the toast's Undo can't reach a different import.
+            .andExpect(jsonPath("$[0].id").value(((Number) JsonPath.read(result, "$.eventId")).longValue()));
 
         assertThat(applyNew(importId)).isEqualTo(result);
         assertThat(jdbc.queryForObject("select count(*) from trip_member where user_id = ?", Long.class, who.userId())).isEqualTo(2);
@@ -198,6 +219,41 @@ class ImportApiTest extends IntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from trip_event where trip_id = ?::uuid and type = 'IMPORT_APPLIED'", Long.class, newTrip)).isOne();
         // Someone else replaying the id learns nothing about the trip.
         mvc.perform(json(post("/api/imports/apply"), register(), applyBody(importId, NEW_TRIP, "", ""))).andExpect(status().isNotFound());
+    }
+
+    @Autowired
+    ImportService imports;
+    @Autowired
+    org.springframework.transaction.support.TransactionTemplate tx;
+    @Autowired
+    tools.jackson.databind.json.JsonMapper mapper;
+
+    @Test
+    void overlappingAppliesOfOneNewTripImportCreateOneTrip() throws Exception {
+        UUID importId = UUID.randomUUID();
+        ImportController.ApplyRequest req = mapper.readValue(applyBody(importId, NEW_TRIP, TOKYO_PLACES, TOKYO_ENTRIES),
+            ImportController.ApplyRequest.class);
+        var second = new java.util.concurrent.CompletableFuture<Object>();
+        ImportService.Result first = tx.execute(s -> {
+            ImportService.Result r = imports.apply(who.userId(), req);
+            // A retry arrives while the first Apply hasn't committed; it must wait for it, then return its result.
+            Thread.ofVirtual().start(() -> {
+                try {
+                    second.complete(tx.execute(s2 -> imports.apply(who.userId(), req)));
+                } catch (Throwable e) {
+                    second.complete(e);
+                }
+            });
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                throw new IllegalStateException(e);
+            }
+            return r;
+        });
+        assertThat(second.get(10, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(first);
+        assertThat(jdbc.queryForObject("select count(*) from trip_import where import_id = ?", Long.class, importId)).isOne();
+        assertThat(jdbc.queryForObject("select count(*) from trip_member where user_id = ?", Long.class, who.userId())).isEqualTo(2);
     }
 
     @Test

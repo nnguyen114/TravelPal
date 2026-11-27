@@ -83,4 +83,6 @@ export type Draft = {
 }
 export type ImportResult = {
   tripId: string; firstDayIndex: number | null; added: { places: number; entries: number }; skipped: { name: string; reason: string }[]
+  /** The IMPORT_APPLIED event, so Undo reverses this import and no other. */
+  eventId: number
 }

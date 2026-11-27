@@ -66,14 +66,6 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 }
 
 /** POSTs a multipart form, e.g. a file upload. */
-export async function postForm<T>(path: string, form: FormData): Promise<T> {
-  let res = await send(path, { method: 'POST', body: form })
-  if (res.status === 401 && accessToken && (await refreshSession())) {
-    res = await send(path, { method: 'POST', body: form })
-  }
-  return parse<T>(res)
-}
-
 export async function startSession(path: '/api/auth/login' | '/api/auth/register', body: unknown): Promise<User> {
   const s = await parse<Session>(await send(path, { method: 'POST', body: JSON.stringify(body) }))
   accessToken = s.accessToken
@@ -97,12 +89,13 @@ export async function deleteAccount(password: string): Promise<void> {
 
 /**
  * Reads a server-sent-event stream with the bearer token (EventSource can't send headers or a body).
- * Calls onEvent(name, data) per event; resolves when the stream ends. A body makes it a POST.
+ * Calls onEvent(name, data) per event; resolves when the stream ends. A body makes it a POST (FormData as-is, for uploads).
  */
 export async function readEvents(
   path: string, onEvent: (name: string, data: string) => void, signal: AbortSignal, body?: unknown,
 ): Promise<void> {
-  const init: RequestInit = body === undefined ? { signal } : { signal, method: 'POST', body: JSON.stringify(body) }
+  const init: RequestInit = body === undefined ? { signal }
+    : { signal, method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body) }
   let res = await send(path, init)
   if (res.status === 401 && (await refreshSession())) res = await send(path, init)
   if (!res.ok || !res.body) {

@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { Link, useBlocker, useNavigate, useParams } from 'react-router'
-import { ApiError, api, postForm } from '../api'
+import { ApiError, api, readEvents } from '../api'
 import { KIND, canEdit, dayColor, daysBetween, entrySummary, formatDay, formatRange, formatShort, shiftDate } from '../trip'
 import type { Draft, DraftItem, EntryDetails, ImportResult, Place, Trip } from '../types'
 import { TopBar } from './Dashboard'
@@ -56,11 +56,11 @@ function applyBody(r: Review, importId: string, trip: Trip | undefined) {
     return { importId, tripId: trip.id, extendEndTo: r.extend && last && last > trip.endDate ? last : null, places, entries }
   }
   // City dates have to sit inside the trip; drop them if the traveler moved the trip's dates past them.
-  const cities = r.cities.map((c) => {
+  const cities = r.cities.filter((c) => c.name.trim()).map((c) => {
     const s = c.startDate && c.startDate < r.start ? r.start : c.startDate
     const e = c.endDate && c.endDate > r.end ? r.end : c.endDate
     const ok = s && e && s <= e
-    return { name: c.name, lat: c.lat, lng: c.lng, startDate: ok ? s : null, endDate: ok ? e : null }
+    return { name: c.name.trim(), lat: c.lat, lng: c.lng, startDate: ok ? s : null, endDate: ok ? e : null }
   })
   return { importId, newTrip: { name: r.name, startDate: r.start, endDate: r.end, cities }, places, entries }
 }
@@ -98,12 +98,22 @@ export function ImportPage() {
   }, [review])
 
   const read = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const form = new FormData()
       if (file) form.set('file', file)
       else form.set('text', text)
       if (tripId) form.set('tripId', tripId)
-      return postForm<Draft>('/api/imports/read', form)
+      // A stream, so a long read keeps its connection: status events until the draft, or an error, arrives.
+      let draft: Draft | undefined
+      await readEvents('/api/imports/read', (name, data) => {
+        if (name === 'draft') draft = JSON.parse(data)
+        if (name === 'error') {
+          const e = JSON.parse(data) as { status: number; message: string }
+          throw new ApiError(e.status, e.message)
+        }
+      }, new AbortController().signal, form)
+      if (!draft) throw new Error('The connection dropped. Try again.')
+      return draft
     },
     onSuccess: (d) => {
       importId.current = crypto.randomUUID()
@@ -196,6 +206,9 @@ function ReviewForm({ heading, draft, review, setReview, trip, onApply, applying
   const end = trip ? (r.extend && last && last > trip.endDate ? last : trip.endDate) : r.end
 
   const blockers: Blocker[] = []
+  if (!trip && !r.cities.some((c) => c.name.trim())) {
+    blockers.push({ key: null, message: 'Add at least one base city, like Tokyo.' })
+  }
   if (!trip && (!r.start || !r.end || r.end < r.start || daysBetween(r.start, r.end) >= MAX_DAYS)) {
     blockers.push({ key: null, message: `Set the trip's start and end dates (at most ${MAX_DAYS} days).` })
   }
@@ -322,7 +335,11 @@ function RowEditor({ row, setRow, remove, min, max }: {
         <div className="row" style={{ gap: 8 }}>
           <span className="sr-only">{label}</span>
           <input className="title-input" aria-label={`Title (${label})`} value={row.title} maxLength={200} onChange={(e) => patch({ title: e.target.value })} />
-          <input type="time" aria-label={`Time for ${name}`} value={row.time ?? ''} onChange={(e) => patch({ time: e.target.value || null })} />
+          <input type="time" aria-label={`Time for ${name}`} value={row.time ?? ''} onChange={(e) => {
+            const time = e.target.value || null
+            // A time the traveler adds is one they mean to keep; an explicit unlock on a timed row stays.
+            patch(row.time ? { time } : { time, lock: !!time })
+          }} />
           <input type="date" aria-label={`Date for ${name}`} value={row.date ?? ''} min={min || undefined} max={max || undefined}
             onChange={(e) => patch({ date: e.target.value || null })} />
           {(row.kind === 'PLACE' || row.kind === 'NOTE') && (
@@ -359,7 +376,7 @@ function RowEditor({ row, setRow, remove, min, max }: {
             {options.map((o, i) => (
               <div key={i} className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
                 <input aria-label={`Option ${i + 1} of ${name}`} value={o.label} maxLength={200} style={{ flex: 1 }}
-                  onChange={(e) => patch({ details: { ...row.details, options: options.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) } })} />
+                  onChange={(e) => patch({ details: { ...row.details, options: options.map((x, j) => (j === i ? { ...x, label: e.target.value, place: null } : x)) } })} />
                 <button type="button" className="btn btn-soft" aria-label={`Remove option ${o.label}`} disabled={options.length <= 1}
                   onClick={() => patch({ details: { ...row.details, options: options.filter((_, j) => j !== i) } })}>Remove</button>
               </div>

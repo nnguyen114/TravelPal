@@ -11,7 +11,6 @@ import base64
 import binascii
 import json
 import logging
-import re
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
@@ -194,8 +193,10 @@ def clock(t: str | None) -> tuple[str | None, str | None]:
 
 
 def norm(name: str) -> str:
-    plain = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]", "", plain.lower())
+    """A name's comparable form: case, accents, spaces and punctuation dropped; letters of every script kept, so
+    Sensō-ji matches Senso-ji but 浅草寺 and 東京駅 stay different. A name of only punctuation keeps itself."""
+    plain = "".join(c for c in unicodedata.normalize("NFKD", name) if not unicodedata.combining(c))
+    return "".join(c for c in plain.casefold() if c.isalnum()) or name.strip()
 
 
 def ampm(t: str) -> str:

@@ -170,6 +170,16 @@ def test_candidates_with_the_same_name_count_once():
     assert [c["providerId"] for c in importer.candidates("Hoppy Street", None, twice)] == ["geoapify:a"]
 
 
+def test_names_in_any_script_stay_distinct(claude_says):
+    assert importer.norm("Sensō-ji") == importer.norm("senso ji")
+    assert importer.norm("浅草寺") != importer.norm("東京駅")
+    assert importer.norm("!!!") != importer.norm("???")
+    # Two different Japanese places on one day are two stops, not one.
+    claude_says(outline([day(12, 25, [it("PLACE", "浅草寺"), it("PLACE", "東京駅"), it("PLACE", "浅草寺")])]))
+    draft = importer.read(read(), http=geocoder())
+    assert [i["title"] for i in draft["days"][0]["items"]] == ["浅草寺", "東京駅"]
+
+
 def test_next_occurrence_is_on_or_after_the_reference():
     assert importer.next_on_or_after(11, 26, TODAY) == TODAY
     assert importer.next_on_or_after(11, 25, TODAY) == date(2027, 11, 25)

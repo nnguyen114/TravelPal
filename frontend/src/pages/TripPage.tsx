@@ -13,7 +13,7 @@ import { PaceSwitch, useOptimize } from '../optimize'
 import { bestTime, byDay, canEdit, cityForDay, countdown, dayColor, dayDate, entriesForDay, formatDay, formatDuration, formatRange, freeTime, toInput } from '../trip'
 import { EntryList } from '../entries'
 import { DiscoverSheet, type DiscoverAsk } from '../discover'
-import type { Destination, Entry, HistoryEntry, ImportResult, Mode, Trip } from '../types'
+import type { Destination, Entry, ImportResult, Mode, Trip } from '../types'
 import { SuggestionsTab, useProposalCounts } from './Suggestions'
 import { ActivityTab, MembersTab } from './CollabTabs'
 
@@ -482,12 +482,8 @@ function ImportToast({ trip, result }: { trip: Trip; result: ImportResult }) {
   const qc = useQueryClient()
   const [closed, setClosed] = useState(false)
   const undo = useMutation({
-    mutationFn: async () => {
-      const events = await api<HistoryEntry[]>(`/api/trips/${trip.id}/events?limit=20`)
-      const ev = events.find((e) => e.type === 'IMPORT_APPLIED' && e.undoable)
-      if (!ev) throw new Error('This import was already undone.')
-      await api(`/api/trips/${trip.id}/events/${ev.id}/undo`, { method: 'POST' })
-    },
+    // This import's own event: another import (or one undone already) is never the one reversed.
+    mutationFn: () => api(`/api/trips/${trip.id}/events/${result.eventId}/undo`, { method: 'POST' }),
     onSettled: () => {
       for (const key of ['destinations', 'entries', 'events', 'trip']) qc.invalidateQueries({ queryKey: [key, trip.id] })
     },

@@ -42,7 +42,13 @@ const TOKYO: Draft = {
     { date: '2026-12-27', item: 3, kind: 'MANY_MATCHES', message: 'Golden Gai has more than one possible match.' },
   ],
 }
-const RESULT = { tripId: 'new1', firstDayIndex: 0, added: { places: 6, entries: 6 }, skipped: [] }
+const RESULT = { tripId: 'new1', firstDayIndex: 0, added: { places: 6, entries: 6 }, skipped: [], eventId: 1 }
+
+/** The read endpoint's answer: progress, then the draft (or an error) as server-sent events. */
+function stream(draft: unknown, error?: { status: number; message: string }) {
+  const tail = error ? `event: error\ndata: ${JSON.stringify(error)}` : `event: draft\ndata: ${JSON.stringify(draft)}`
+  return new Response(`event: status\ndata: {"text":"Reading your plan…"}\n\n${tail}\n\n`, { status: 200 })
+}
 
 function TripStub() {
   const state = useLocation().state as { imported?: { tripId: string } } | null
@@ -71,7 +77,7 @@ async function readPlan(text = 'DEC 24\nFlight LAX → HND') {
 }
 
 it('reviews the Tokyo draft by day with issues that link to their rows', async () => {
-  const calls = mockApi({ 'POST /api/imports/read': () => json(200, TOKYO) })
+  const calls = mockApi({ 'POST /api/imports/read': () => stream(TOKYO) })
   renderAt('/import')
   const heading = await readPlan()
   expect(heading).toHaveFocus()
@@ -104,7 +110,7 @@ it('reviews the Tokyo draft by day with issues that link to their rows', async (
 it('applies the edited rows, retries with the same importId, and opens the trip', async () => {
   let attempts = 0
   const calls = mockApi({
-    'POST /api/imports/read': () => json(200, TOKYO),
+    'POST /api/imports/read': () => stream(TOKYO),
     'POST /api/imports/apply': () => (++attempts === 1 ? json(503, { detail: 'Try again.' }) : json(200, RESULT)),
   })
   renderAt('/import')
@@ -144,8 +150,42 @@ it('applies the edited rows, retries with the same importId, and opens the trip'
   expect(body.entries[3].details.options).toEqual([{ label: 'Shibuya Sky', place: cand('Shibuya Sky', 'sky') }])
 })
 
+it('drops a renamed option\'s map match, locks a time the traveler adds, and needs a base city', async () => {
+  const calls = mockApi({ 'POST /api/imports/read': () => stream(TOKYO), 'POST /api/imports/apply': () => json(200, RESULT) })
+  renderAt('/import')
+  await readPlan()
+  const sky = within(screen.getByDisplayValue('Shibuya Sky').closest('li')!).getByDisplayValue('Shibuya Sky')
+  await userEvent.clear(sky)
+  await userEvent.type(sky, 'Shibuya Crossing')
+  const senso = screen.getByDisplayValue('Senso-ji').closest('li')!
+  fireEvent.change(within(senso).getByLabelText(/^Time for/), { target: { value: '09:00' } })
+  expect(within(senso).getByLabelText('Lock time')).toBeChecked()
+
+  const cities = screen.getByLabelText('Base cities (comma-separated)')
+  await userEvent.clear(cities)
+  expect(screen.getByText(/Add at least one base city/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Apply as a new trip' })).toBeDisabled()
+  await userEvent.type(cities, 'Tokyo, ')
+  await userEvent.click(screen.getByRole('button', { name: 'Apply as a new trip' }))
+
+  await waitFor(() => expect(calls.some((c) => c.url === '/api/imports/apply')).toBe(true))
+  const body = calls.find((c) => c.url === '/api/imports/apply')!.body as Record<string, any>
+  expect(body.entries.find((e: { kind: string }) => e.kind === 'CHOICE').details.options[0]).toEqual({ label: 'Shibuya Crossing', place: null })
+  expect(body.places.find((p: { name: string }) => p.name === 'Senso-ji')).toMatchObject({ startTime: '09:00', locked: true })
+  expect(body.newTrip.cities.map((c: { name: string }) => c.name)).toEqual(['Tokyo']) // the trailing comma adds no blank city
+})
+
+it('shows an error that arrives in the read stream and keeps the text', async () => {
+  mockApi({ 'POST /api/imports/read': () => stream(null, { status: 422, message: "We couldn't find a plan in that." }) })
+  renderAt('/import')
+  await userEvent.type(await screen.findByLabelText('Paste your plan'), 'hello')
+  await userEvent.click(screen.getByRole('button', { name: 'Read my plan' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent("We couldn't find a plan in that.")
+  expect(screen.getByLabelText('Paste your plan')).toHaveValue('hello')
+})
+
 it('moving the start date shifts every day, and dates outside the trip block Apply', async () => {
-  const calls = mockApi({ 'POST /api/imports/read': () => json(200, TOKYO), 'POST /api/imports/apply': () => json(200, RESULT) })
+  const calls = mockApi({ 'POST /api/imports/read': () => stream(TOKYO), 'POST /api/imports/apply': () => json(200, RESULT) })
   renderAt('/import')
   await readPlan()
   // Date inputs change in one step in a browser.
@@ -166,7 +206,7 @@ it('moving the start date shifts every day, and dates outside the trip block App
 it('imports into an existing trip, offering to extend it', async () => {
   const calls = mockApi({
     'GET /api/trips/t1': () => json(200, trip({ startDate: '2026-12-24', endDate: '2026-12-26', dayCount: 3 })),
-    'POST /api/imports/read': () => json(200, TOKYO),
+    'POST /api/imports/read': () => stream(TOKYO),
     'POST /api/imports/apply': () => json(200, { ...RESULT, tripId: 't1' }),
   })
   renderAt('/trips/t1/import')
@@ -213,7 +253,7 @@ it('keeps the pasted text when reading fails, and checks input first', async () 
 })
 
 it('asks before leaving a review that was not applied', async () => {
-  mockApi({ 'POST /api/imports/read': () => json(200, TOKYO) })
+  mockApi({ 'POST /api/imports/read': () => stream(TOKYO) })
   const router = renderAt('/import')
   await readPlan()
   const unload = new Event('beforeunload', { cancelable: true })

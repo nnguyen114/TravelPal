@@ -294,13 +294,10 @@ it('viewers see entries without edit or choose buttons', async () => {
 })
 
 it('after an import, opens on its first day with a toast whose Undo reverses it', async () => {
-  const calls = api({}, {
-    'GET /api/trips/t1/events': () => json(200, [{ id: 7, type: 'IMPORT_APPLIED', undoable: true, summary: 'imported 2 places and 1 note' }]),
-    'POST /api/trips/t1/events/7/undo': () => new Response(null, { status: 204 }),
-  })
+  const calls = api({}, { 'POST /api/trips/t1/events/7/undo': () => new Response(null, { status: 204 }) })
   const scroll = vi.fn()
   Element.prototype.scrollIntoView = scroll
-  const imported = { tripId: 't1', firstDayIndex: 2, added: { places: 2, entries: 1 }, skipped: [{ name: 'Senso-ji', reason: 'Already in this trip' }] }
+  const imported = { tripId: 't1', firstDayIndex: 2, added: { places: 2, entries: 1 }, skipped: [{ name: 'Senso-ji', reason: 'Already in this trip' }], eventId: 7 }
   renderAt({ pathname: '/trips/t1', state: { imported } }, routes)
   const toast = await screen.findByText('Imported 2 places and 1 note. 1 place already in the trip was skipped.')
   expect(screen.getByRole('article', { name: 'Day 3' })).toHaveAttribute('data-active', 'true')
@@ -308,7 +305,8 @@ it('after an import, opens on its first day with a toast whose Undo reverses it'
   expect(screen.getByRole('link', { name: 'Import' })).toHaveAttribute('href', '/trips/t1/import')
   await userEvent.click(within(toast.closest('.toast') as HTMLElement).getByRole('button', { name: 'Undo' }))
   expect(await screen.findByText('Import undone.')).toBeInTheDocument()
-  expect(calls.some((c) => c.url === '/api/trips/t1/events/7/undo')).toBe(true)
+  // Its own event, straight away: no lookup that could pick up another import.
+  expect(calls.filter((c) => c.url.includes('/events')).map((c) => `${c.method} ${c.url}`)).toEqual(['POST /api/trips/t1/events/7/undo'])
 })
 
 it('offers Same day in the edit dialog', async () => {

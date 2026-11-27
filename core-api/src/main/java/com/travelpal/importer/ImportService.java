@@ -62,7 +62,12 @@ public class ImportService {
 
     public record Added(int places, int entries) {}
     public record Skipped(String name, String reason) {}
-    public record Result(UUID tripId, Integer firstDayIndex, Added added, List<Skipped> skipped) {}
+    /** {@code eventId} is the IMPORT_APPLIED event, so Undo targets exactly this import. */
+    public record Result(UUID tripId, Integer firstDayIndex, Added added, List<Skipped> skipped, long eventId) {
+        Result withEvent(long id) {
+            return new Result(tripId, firstDayIndex, added, skipped, id);
+        }
+    }
     /** The IMPORT_APPLIED event's "after": what was created (for undo) and the result (for a repeated apply). */
     record Applied(UUID importId, List<History.Ref> destinations, List<History.Ref> entries, Result result) {}
 
@@ -89,7 +94,8 @@ public class ImportService {
         this.json = json;
     }
 
-    public String read(UUID user, String text, MultipartFile file, UUID tripId) throws InterruptedException, IOException {
+    /** Validates the input and spends the quota; what it returns goes to {@link #extract}. Errors here are plain 4xx. */
+    public String prepare(UUID user, String text, MultipartFile file, UUID tripId) throws IOException {
         boolean hasText = text != null && !text.isBlank();
         if (hasText == (file != null && !file.isEmpty())) {
             throw bad("Paste your plan or choose a PDF, not both.");
@@ -122,13 +128,18 @@ public class ImportService {
         body.put("today", LocalDate.now().toString());
         quota.spend(user, AiQuota.Kind.IMPORT);
         log.info("import read: {} chars of text, {} PDF bytes", hasText ? text.length() : 0, hasText ? 0 : file.getSize());
-        String draft = ai.call("/internal/import", json.writeValueAsString(body), user, Duration.ofMinutes(3), "Reading your plan");
+        return json.writeValueAsString(body);
+    }
+
+    /** The slow part (often 30 s or more): ai-service reads the plan. Returns the draft as one line of JSON. */
+    public String extract(UUID user, String prepared) throws InterruptedException {
+        String draft = ai.call("/internal/import", prepared, user, Duration.ofMinutes(3), "Reading your plan");
         JsonNode d = json.readTree(draft);
         if (d.path("days").size() == 0 && d.path("undated").size() == 0) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                 "We couldn't find a plan in that. Check it has dates and places, or paste the text instead.");
         }
-        return draft;
+        return json.writeValueAsString(d);
     }
 
     @Transactional
@@ -138,8 +149,11 @@ public class ImportService {
         }
         UUID tripId = req.tripId();
         if (tripId != null) {
-            access.require(tripId, user, TripRole.EDITOR); // takes the trip lock: a retried Apply waits for the first one
+            access.require(tripId, user, TripRole.EDITOR); // takes the trip lock first, as every write does
         }
+        // A new trip has no row to lock yet, so overlapping Applies of one import wait on its id instead; the second
+        // then finds the first's result below. Released when the transaction ends.
+        jdbc.query("select pg_advisory_xact_lock(hashtextextended(?, 0))", rs -> null, req.importId().toString());
         Optional<Result> again = previous(user, req.importId());
         if (again.isPresent()) {
             return again.get();
@@ -194,20 +208,20 @@ public class ImportService {
             }
         }
         Result result = new Result(tripId, days.stream().min(Integer::compare).orElse(null),
-            new Added(placeRefs.size(), entryRefs.size()), skipped);
+            new Added(placeRefs.size(), entryRefs.size()), skipped, 0);
         long eventId = history.record(tripId, user, "IMPORT_APPLIED", "imported " + count(placeRefs.size(), "place") + " and "
             + count(entryRefs.size(), "note"), null, new Applied(req.importId(), placeRefs, entryRefs, result));
         jdbc.update("insert into trip_import (import_id, trip_id, event_id) values (?, ?, ?)", req.importId(), tripId, eventId);
         log.info("import applied: {} places, {} entries, {} skipped", placeRefs.size(), entryRefs.size(), skipped.size());
-        return result;
+        return result.withEvent(eventId);
     }
 
     /** The first result for an importId that was already applied (if the caller can see that trip). */
     private Optional<Result> previous(UUID user, UUID importId) {
-        return jdbc.query("select i.trip_id, e.after from trip_import i join trip_event e on e.id = i.event_id where i.import_id = ?",
+        return jdbc.query("select i.trip_id, e.after, i.event_id from trip_import i join trip_event e on e.id = i.event_id where i.import_id = ?",
             (rs, n) -> {
                 access.require(rs.getObject(1, UUID.class), user, TripRole.VIEWER);
-                return history.read(rs.getString(2), Applied.class).result();
+                return history.read(rs.getString(2), Applied.class).result().withEvent(rs.getLong(3));
             }, importId).stream().findFirst();
     }
 
