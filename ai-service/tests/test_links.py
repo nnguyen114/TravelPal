@@ -551,6 +551,7 @@ def test_search_outage_on_either_query_says_so(monkeypatch):
     ("一蘭渋谷店", "", "一蘭", "渋谷"),
     ("Ichiran", "Jinnan, Shibuya, Tokyo", "Ichiran", "Shibuya"),  # the bare name, with the area in its address
     ("Ichiran Shibuya", "Jinnan, Shibuya, Tokyo", "Ichiran Shibuya", "Shibuya"),
+    ("Sensō Ji", "1, Asakusa, Taito, Japan", "Sensō-ji", "Asakusa, Tokyo"),  # any part of the area will do
 ])
 def test_names_that_are_the_place(name, address, place, area):
     assert links.same_place({"name": name, "address": address}, place, area)
