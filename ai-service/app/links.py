@@ -29,6 +29,16 @@ TIKTOK = {"tiktok.com", "www.tiktok.com", "m.tiktok.com"}
 TIKTOK_VIDEO = re.compile(r"/@([\w.]+)/video/(\d+)/?")
 YOUTUBE = {"youtube.com", "www.youtube.com", "m.youtube.com"}
 YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+# Sites that show servers only a login wall: not fetched at all (hostname and its subdomains).
+SOCIAL = {"instagram.com": "Instagram", "facebook.com": "Facebook", "fb.com": "Facebook", "fb.watch": "Facebook",
+          "threads.net": "Threads", "threads.com": "Threads", "xiaohongshu.com": "Xiaohongshu",
+          "xhslink.com": "Xiaohongshu"}
+# Page titles that name no place (compared after norm()): publisher names alone, and login or bot-check walls.
+PUBLISHERS = {"instagram", "facebook", "threads", "tiktok", "youtube", "yelp", "tabelog", "tripadvisor", "google",
+              "googlemaps", "xiaohongshu", "twitter"}
+WALLS = {"", "log in", "login", "sign in", "sign up", "log in or sign up", "access denied", "forbidden",
+         "403 forbidden", "404 not found", "not found", "page not found", "just a moment", "attention required",
+         "are you a robot", "security check", "make your day"}
 META = re.compile(r'<meta[^>]+(?:property|name)=["\'](og:title|og:description|description)["\'][^>]+content=["\']([^"\']*)', re.IGNORECASE)
 TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
@@ -60,6 +70,7 @@ MESSAGES = {
     "video_unclear": "We couldn't tell which place this video is about. Type the place name instead.",
     "tiktok": "Paste a TikTok video link or type the place name instead.",
     "youtube": "Paste a YouTube video link or type the place name instead.",
+    "search": "Paste the place's website or Google Maps link, or type the place name instead.",
 }
 
 
@@ -129,11 +140,17 @@ def fetch(url: str, http: httpx.Client, stop=None, want: str = "html") -> tuple[
     raise Unreadable("redirects")
 
 
-def page_text(page: str) -> str:
-    parts = [m.group(2) for m in META.finditer(page)]
-    if t := TITLE.search(page):
-        parts.insert(0, t.group(1))
-    return html.unescape(" | ".join(p.strip() for p in parts if p.strip()))[:2000]
+def page_text(page: str) -> tuple[str, str]:
+    """The page's title and its title + description text, leaving out login walls and bare publisher names."""
+    title = html.unescape(t.group(1)).strip() if (t := TITLE.search(page)) else ""
+    parts = [p for p in (title, *(html.unescape(m.group(2)).strip() for m in META.finditer(page))) if not filler(p)]
+    return ("" if filler(title) else title), " | ".join(parts)[:2000]
+
+
+def filler(text: str) -> bool:
+    """Text that names no place: empty, a site's own name, or a login/blocked page's title."""
+    words = norm(text).split()
+    return "".join(words) in PUBLISHERS or " ".join(w for w in words if w not in PUBLISHERS) in WALLS
 
 
 def norm(text: str) -> str:
@@ -160,9 +177,9 @@ def stated(phrase: str, text: str) -> bool:
     return bool(p) and re.search(rf"(?<![a-z0-9]){re.escape(p)}(?![a-z0-9])", norm(text)) is not None
 
 
-def guess(text: str, url: str = "", video: bool = False) -> tuple[str, str]:
+def guess(text: str, url: str = "", video: bool = False, title: str = "") -> tuple[str, str]:
     """The place and area the text names. A video caption only counts when the name is written in it; with no
-    Claude, a web page falls back to its title but a video gives no answer."""
+    Claude, a web page falls back to its title (a video has none to fall back to)."""
     if claude.enabled():
         if video:
             data = claude._json_call(VIDEO_PROMPT, f"<caption>{text}</caption>", GUESS_SCHEMA)
@@ -177,9 +194,7 @@ def guess(text: str, url: str = "", video: bool = False) -> tuple[str, str]:
             if video and not stated(place, text):
                 return "", ""
             return place, area if not video or stated(area, text) else ""
-    if video:
-        return "", ""
-    first = re.split(r"\s[|\-–—]\s", text)[0].strip() if text else ""
+    first = re.split(r"\s[|\-–—]\s", title)[0].strip()
     return first[:150], ""
 
 
@@ -209,6 +224,10 @@ def route(url: str) -> tuple[str, str]:
         host, path = u.hostname or "", u.path
     except ValueError:
         return "page", ""  # fetch refuses it
+    if site := next((name for domain, name in SOCIAL.items() if host == domain or host.endswith("." + domain)), ""):
+        return "social", site
+    if host in GOOGLE and path in ("/search", "/url"):  # search results, not a place
+        return "search", ""
     if host in GOOGLE and (path == "/maps" or path.startswith("/maps/")
                            or (host == "maps.google.com" and path in ("", "/"))):
         return "maps", ""
@@ -283,6 +302,10 @@ def resolve(url: str, near: dict | None, http: httpx.Client | None = None, short
         return fail(MESSAGES["video"])
     if kind == "youtube_other":
         return fail(MESSAGES["youtube"])
+    if kind == "social":
+        return fail(f"We can't read {arg} links. Type the place name instead.")
+    if kind == "search":
+        return fail(MESSAGES["search"])
     try:  # a page or a short link; a redirect to a link we recognise is handled here, before its page is requested
         url, body = fetch(url, http or PAGE_CLIENT, stop=lambda target: route(target)[0] not in ("page", "short"))
     except Unreadable as e:
@@ -291,7 +314,11 @@ def resolve(url: str, near: dict | None, http: httpx.Client | None = None, short
         return resolve(url, near, http, short=arg if kind == "short" else short)
     if kind == "short":  # a share link that didn't lead to the map or video it stands for
         return fail(MESSAGES["maps" if arg == "maps" else "video"])
-    place, area = guess(page_text(body), url)
+    title, text = page_text(body)
+    if not text:
+        return fail(MESSAGES["no_place"], readable=True)
+    u = urlparse(url)  # Claude sees where the page is, not its query (tracking or signed parameters) or fragment
+    place, area = guess(text, f"{u.scheme}://{u.hostname}{u.path}", title=title)
     if not place:
         return fail(MESSAGES["no_place"], readable=True)
     return candidates(place, near, http, *([f"{place} {area}"] if area else []), place)

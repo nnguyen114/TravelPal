@@ -19,7 +19,10 @@ def client(routes):
 
 HOSTS = {"short.link": "93.184.216.1", "site.example": "93.184.216.2", "social.example": "93.184.216.3", "a.example": "93.184.216.4",
          "maps.app.goo.gl": "93.184.216.5", "www.google.com": "93.184.216.6", "google.com.site.example": "93.184.216.7",
-         "www.tiktok.com": "93.184.216.8", "vm.tiktok.com": "93.184.216.9", "www.youtube.com": "93.184.216.10"}
+         "www.tiktok.com": "93.184.216.8", "vm.tiktok.com": "93.184.216.9", "www.youtube.com": "93.184.216.10",
+         "www.instagram.com": "93.184.216.11", "www.yelp.com": "93.184.216.12", "tabelog.com": "93.184.216.13",
+         "www.tripadvisor.com": "93.184.216.14", "instagram.com.site.example": "93.184.216.15",
+         "notinstagram.com": "93.184.216.16"}
 BY_IP = {v: k for k, v in HOSTS.items()}
 MAPS_MISS = "This Google Maps link doesn't identify a place we can look up. Type the place name instead."
 TOKYO = {"lat": 35.68, "lng": 139.76}
@@ -374,3 +377,108 @@ def test_tiktok_share_links_to_a_profile_or_elsewhere(monkeypatch):
 def test_youtube_links_that_arent_videos(url):
     assert links.resolve(url, None, client(lambda r: 1 / 0)) == links.fail(
         "Paste a YouTube video link or type the place name instead.")
+
+
+@pytest.mark.parametrize("url, site", [
+    ("https://www.instagram.com/p/C0example/", "Instagram"), ("https://instagram.com/reel/x?igsh=abc", "Instagram"),
+    ("https://m.facebook.com/story.php?id=1", "Facebook"), ("https://fb.com/x", "Facebook"),
+    ("https://fb.watch/abc/", "Facebook"), ("https://www.threads.net/@a/post/1", "Threads"),
+    ("https://threads.com/@a", "Threads"), ("https://www.xiaohongshu.com/explore/1", "Xiaohongshu"),
+    ("http://xhslink.com/a/b", "Xiaohongshu"),
+])
+def test_social_sites_are_not_fetched(url, site):
+    assert links.resolve(url, None, client(lambda r: 1 / 0)) == links.fail(
+        f"We can't read {site} links. Type the place name instead.")
+
+
+def test_short_links_to_social_sites_stop_before_the_page(monkeypatch):
+    public(monkeypatch)
+    fetched = []
+
+    def routes(r):
+        fetched.append(host(r))
+        return httpx.Response(302, headers={"location": "https://www.instagram.com/p/C0example/?igsh=x"})
+    out = links.resolve("https://short.link/ig", None, client(routes))
+    assert fetched == ["short.link"] and out["message"] == "We can't read Instagram links. Type the place name instead."
+
+
+@pytest.mark.parametrize("url", ["https://instagram.com.site.example/p/1", "https://notinstagram.com/p/1"])
+def test_social_lookalikes_are_ordinary_pages(url, monkeypatch):
+    public(monkeypatch)
+    out = links.resolve(url, None, client(lambda r: httpx.Response(200, json=GEOCODED) if r.url.host == "api.geoapify.com"
+                                          else httpx.Response(200, text=PAGE, headers={"content-type": "text/html"})))
+    assert out["guess"] == "Koffee Mameya Kakeru"
+
+
+@pytest.mark.parametrize("url", ["https://www.google.com/search?q=ichiran+shibuya", "https://google.com/url?q=https://site.example/",
+                                 "https://maps.google.com/search?q=x"])
+def test_google_search_links_ask_for_a_better_link(url):
+    assert links.resolve(url, None, client(lambda r: 1 / 0)) == links.fail(
+        "Paste the place's website or Google Maps link, or type the place name instead.")
+
+
+REVIEW_PAGES = {
+    "https://www.yelp.com/biz/ichiran-shibuya": (
+        ('<title>ICHIRAN Shibuya - Updated 2026 - 1-22-7 Jinnan, Tokyo - Yelp</title>'
+        '<meta name="description" content="Ramen in Shibuya">'), "ICHIRAN Shibuya - Updated 2026"),
+    "https://tabelog.com/en/tokyo/A1318/A131802/13001826/": (
+        ('<title>Mintei - Shimokitazawa/Chinese | Tabelog</title>'
+        '<meta property="og:title" content="Mintei (Shimokitazawa/Chinese)">'), "Mintei (Shimokitazawa/Chinese)"),
+    "https://www.tripadvisor.com/Attraction_Review-g1066461-d320047-Reviews-Senso_ji_Temple": (
+        ('<title>SENSO-JI TEMPLE (2026) All You Need to Know - Tripadvisor</title>'
+        '<meta property="og:description" content="Senso-ji Temple, Taito: tips">'), "Senso-ji Temple, Taito: tips"),
+}
+
+
+@pytest.mark.parametrize("url", REVIEW_PAGES)
+def test_review_sites_are_read_like_any_page(url, monkeypatch):
+    public(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    asked = []
+    monkeypatch.setattr(links.claude, "_json_call", lambda system, user, schema: asked.append(user) or {"place": "Somewhere", "area": ""})
+    page, snippet = REVIEW_PAGES[url]
+
+    def routes(r):
+        if r.url.host == "api.geoapify.com":
+            return httpx.Response(200, json={"results": []})
+        assert host(r) == urlparse(url).hostname
+        return httpx.Response(200, text=page, headers={"content-type": "text/html"})
+    out = links.resolve(url, None, client(routes))
+    assert snippet in asked[0] and out["guess"] == "Somewhere"
+
+
+@pytest.mark.parametrize("page", [
+    "<title>Tripadvisor</title>", "<title>Log in | Yelp</title>", "<title>Just a moment...</title>",
+    "<title> </title><meta name='description' content='Access Denied'>", "<html>no title</html>",
+    "<title>TikTok - Make Your Day</title>",
+])
+def test_publisher_names_and_login_walls_name_no_place(page, monkeypatch):
+    public(monkeypatch)
+    no_claude(monkeypatch)
+    out = links.resolve("https://www.yelp.com/biz/x", None, client(
+        lambda r: httpx.Response(200, text=page, headers={"content-type": "text/html"})))
+    assert out == links.fail("We read the page but couldn't tell which place it's about. Type the place name instead.",
+                             readable=True)
+
+
+def test_without_claude_a_publisher_title_isnt_a_place(monkeypatch):
+    public(monkeypatch)
+    page = '<title>Tabelog</title><meta name="description" content="Mintei, Chinese food in Shimokitazawa">'
+    out = links.resolve("https://tabelog.com/x", None, client(lambda r: httpx.Response(200, text=page, headers={"content-type": "text/html"})))
+    assert out["guess"] is None and out["message"].startswith("We read the page but couldn't tell")
+
+
+def test_page_queries_reach_the_site_but_not_claude(monkeypatch):
+    public(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    asked, fetched = [], []
+    monkeypatch.setattr(links.claude, "_json_call", lambda system, user, schema: asked.append(user) or {"place": "", "area": ""})
+
+    def routes(r):
+        fetched.append((host(r), r.url.path, r.url.query.decode()))
+        if host(r) == "short.link":
+            return httpx.Response(302, headers={"location": "https://site.example/menu?id=7&sig=abc#reviews"})
+        return httpx.Response(200, text=PAGE, headers={"content-type": "text/html"})
+    links.resolve("https://short.link/m?utm_source=x#top", None, client(routes))
+    assert fetched == [("short.link", "/m", "utm_source=x"), ("site.example", "/menu", "id=7&sig=abc")]
+    assert asked[0].startswith("<url>https://site.example/menu</url>") and "sig" not in asked[0]
