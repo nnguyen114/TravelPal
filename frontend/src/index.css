@@ -124,7 +124,10 @@ dialog input, dialog select, dialog textarea { min-width: 0; }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 
 .assistant { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100vw); background: var(--surface); border-left: 1px solid var(--line); display: flex; flex-direction: column; z-index: 20; box-shadow: -12px 0 40px rgba(28,36,48,.12); }
-.assistant[hidden] { display: none; }
+/* It's a <dialog>: undo the centered-dialog defaults so it stays a full-height panel on the right. */
+.assistant { margin: 0; left: auto; height: auto; max-width: none; max-height: none; padding: 0; border: 0; border-radius: 0; color: var(--ink); }
+.assistant:not([open]) { display: none; }
+.ask-ai[hidden] { display: none; }
 .bubble-user { max-width: 86%; background: var(--accent-tint); border-radius: 18px 18px 4px 18px; padding: 12px 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
 .bubble-ai { max-width: 92%; background: var(--bg); border-radius: 18px 18px 18px 4px; padding: 12px 14px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; }
 .ask-ai { position: fixed; right: 32px; bottom: 28px; min-height: 52px; padding: 0 22px 0 18px; font-size: 15px; box-shadow: 0 8px 24px rgba(28,36,48,.22); z-index: 10; }
@@ -218,8 +221,8 @@ button.avatar:hover { transform: scale(1.1); }
 /* Dialogs and drawers arrive instead of appearing */
 dialog[open] { animation: pop-in .35s var(--spring); }
 dialog::backdrop { backdrop-filter: blur(3px); animation: fade-in .25s ease-out; }
-.assistant { animation: slide-in .4s var(--ease); }
-@media (max-width: 640px) { .assistant { animation-name: slide-up; } }
+.assistant[open] { animation: slide-in .4s var(--ease); }
+@media (max-width: 640px) { .assistant[open] { animation-name: slide-up; } }
 
 /* Screens fade up on arrival */
 main.page, .workspace, .optimize-page { animation: rise .5s var(--ease) both; }

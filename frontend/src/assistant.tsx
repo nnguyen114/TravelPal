@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type Ref } from 'react'
 import { Link } from 'react-router'
 import { api, ApiError, readEvents } from './api'
 import { CloseIcon, SparkleIcon } from './icons'
@@ -168,7 +168,8 @@ function OptimizeProposal({ trip, p }: { trip: Trip; p: Extract<Proposal, { type
 
 /**
  * On-demand trip copilot. Places it picks are added when the traveler taps Add (with Undo); day rearrangements stay a preview.
- * Closing only hides it, so a running add, its Undo and the chat are all still there when it reopens.
+ * Closing only hides it, so a running add, its Undo and the chat are all still there when it reopens. Focus moves
+ * into it on open; the page returns it to Ask AI on close.
  */
 export function AssistantDrawer({ trip, open, onClose }: { trip: Trip; open: boolean; onClose: () => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([])
@@ -176,6 +177,20 @@ export function AssistantDrawer({ trip, open, onClose }: { trip: Trip; open: boo
   const [error, setError] = useState<string | null>(null)
   const end = useRef<HTMLDivElement>(null)
   const ctrl = useRef<AbortController | null>(null)
+  const panel = useRef<HTMLDialogElement>(null)
+  const ask = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const d = panel.current!
+    if (open && !d.open) {
+      // A sheet over the page on phones is modal (the page behind is inert, Escape closes); beside the page it isn't.
+      if (window.matchMedia?.('(max-width: 640px)').matches && d.showModal) d.showModal()
+      else d.setAttribute('open', '')
+      ask.current?.focus()
+    } else if (!open && d.open) {
+      if (d.close) d.close()
+      else d.removeAttribute('open')
+    }
+  }, [open])
   useEffect(() => () => ctrl.current?.abort(), [])
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: 'end' })
@@ -210,12 +225,14 @@ export function AssistantDrawer({ trip, open, onClose }: { trip: Trip; open: boo
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const box = e.currentTarget.elements.namedItem('ask') as HTMLTextAreaElement
+    if (busy || !box.value.trim()) return // nothing was sent, so the draft stays
     send(box.value)
     box.value = ''
   }
 
   return (
-    <aside aria-label="AI assistant" className="assistant" hidden={!open}>
+    <dialog ref={panel} aria-label="AI assistant" className="assistant" onClose={() => open && onClose()}
+      onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onClose() } }}>
       <div className="spread" style={{ padding: '16px 18px', borderBottom: '1px solid #EFEDE7', flexWrap: 'nowrap' }}>
         <div className="row" style={{ flexWrap: 'nowrap' }}>
           <span style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -255,19 +272,22 @@ export function AssistantDrawer({ trip, open, onClose }: { trip: Trip; open: boo
       <form onSubmit={submit} style={{ padding: '14px 18px 18px', borderTop: '1px solid #EFEDE7' }}>
         <label htmlFor="ask" className="muted" style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Message the assistant</label>
         <div className="row" style={{ flexWrap: 'nowrap', alignItems: 'flex-end', border: '1.5px solid var(--line-2)', borderRadius: 16, padding: '8px 8px 8px 14px' }}>
-          <textarea id="ask" name="ask" rows={2} maxLength={20000} placeholder="Paste places, or ask “Can this shop fit on Day 3?”"
+          <textarea ref={ask} id="ask" name="ask" rows={2} maxLength={20000} placeholder="Paste places, or ask “Can this shop fit on Day 3?”"
             style={{ flex: 1, border: 0, outline: 'none', resize: 'none', fontSize: 14, background: 'transparent' }}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit() } }} />
+            onKeyDown={(e) => {
+              // Enter sends; Shift+Enter is a new line, and Enter that confirms an input method's text isn't a send.
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit() }
+            }} />
           <button aria-label="Send" className="btn btn-primary" style={{ width: 44, padding: 0 }} disabled={busy}>→</button>
         </div>
       </form>
-    </aside>
+    </dialog>
   )
 }
 
-export function AskAiButton({ onClick }: { onClick: () => void }) {
+export function AskAiButton({ onClick, hidden, ref }: { onClick: () => void; hidden: boolean; ref: Ref<HTMLButtonElement> }) {
   return (
-    <button className="btn btn-dark ask-ai" onClick={onClick}>
+    <button ref={ref} className="btn btn-dark ask-ai" hidden={hidden} onClick={onClick}>
       <SparkleIcon size={20} color="#FFD66B" /> Ask AI
     </button>
   )

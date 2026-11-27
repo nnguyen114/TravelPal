@@ -94,7 +94,8 @@ public class TripService {
         trip.update(name, start, end);
         em.flush();
         history.record(tripId, userId, "TRIP_UPDATED", datesChanged ? "changed the trip dates" : "renamed the trip to " + trip.getName(), null, null);
-        em.createQuery("update Destination d set d.dayIndex = null, d.position = null where d.tripId = ?1 and d.dayIndex >= ?2")
+        // The version bump makes edits (and undos) based on the old placement fail instead of overwriting this.
+        em.createQuery("update Destination d set d.dayIndex = null, d.position = null, d.version = d.version + 1 where d.tripId = ?1 and d.dayIndex >= ?2")
             .setParameter(1, tripId).setParameter(2, trip.dayCount()).executeUpdate();
         return trip;
     }
@@ -165,8 +166,10 @@ public class TripService {
     /** Account deletion: each trip this user solely owns goes to its longest-standing member, or is deleted if they're alone. */
     @Transactional
     public void releaseAll(UUID userId) {
-        for (TripMember m : members.findByUserId(userId)) {
+        // Trips in id order: a fixed lock order, so two deletions sharing trips can't deadlock.
+        for (TripMember m : members.findByUserId(userId).stream().sorted(java.util.Comparator.comparing(TripMember::getTripId)).toList()) {
             UUID tripId = m.getTripId();
+            access.lock(tripId);
             var next = members.findFirstByTripIdAndUserIdNotOrderByJoinedAtAsc(tripId, userId);
             if (next.isEmpty()) {
                 trips.deleteById(tripId);

@@ -2,6 +2,7 @@ package com.travelpal.optimize;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -20,6 +21,9 @@ public class OptimizationPreview {
     private String result;
     private String error;
     private Instant createdAt;
+    /** A worker's result, an expiry, apply and discard can race; the loser's write fails instead of overwriting. */
+    @Version
+    private Long version;
 
     protected OptimizationPreview() {}
 

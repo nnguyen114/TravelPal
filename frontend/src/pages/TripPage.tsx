@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useParams } from 'react-router'
 import { api } from '../api'
 import { useAuth } from '../auth'
@@ -462,6 +463,12 @@ function DestinationsTab({ trip, destinations }: { trip: Trip; destinations: Des
 export function TripPage({ tab }: { tab: Tab }) {
   const { tripId } = useParams()
   const [askOpen, setAskOpen] = useState(false)
+  const askButton = useRef<HTMLButtonElement>(null)
+  /** Shows Ask AI again first, so keyboard focus can land back on it. */
+  function closeAsk() {
+    flushSync(() => setAskOpen(false))
+    askButton.current?.focus()
+  }
   useTripLive(tripId)
   const trip = useQuery({ queryKey: ['trip', tripId], queryFn: () => api<Trip>(`/api/trips/${tripId}`) })
   const destinations = useQuery({ queryKey: ['destinations', tripId], queryFn: () => api<Destination[]>(`/api/trips/${tripId}/destinations`) })
@@ -484,8 +491,9 @@ export function TripPage({ tab }: { tab: Tab }) {
       {tab === 'suggestions' && <SuggestionsTab trip={trip.data} destinations={destinations.data} />}
       {tab === 'members' && <MembersTab trip={trip.data} />}
       {tab === 'activity' && <ActivityTab trip={trip.data} />}
-      <AssistantDrawer key={trip.data.id} trip={trip.data} open={askOpen} onClose={() => setAskOpen(false)} />
-      {!askOpen && <AskAiButton onClick={() => setAskOpen(true)} />}
+      <AssistantDrawer key={trip.data.id} trip={trip.data} open={askOpen} onClose={closeAsk} />
+      {/* Kept mounted (just hidden) so focus can return to it when the drawer closes. */}
+      <AskAiButton ref={askButton} hidden={askOpen} onClick={() => setAskOpen(true)} />
     </>
   )
 }

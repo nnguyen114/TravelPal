@@ -123,6 +123,8 @@ class OptimizeApiTest extends IntegrationTest {
             .andExpect(jsonPath("$[?(@.name=='Senso-ji')].position").value(0));
         mvc.perform(auth(get(base + "/previews/" + id), who)).andExpect(jsonPath("$.status").value("APPLIED"));
         mvc.perform(auth(post(base + "/previews/" + id + "/apply"), who)).andExpect(status().isConflict());
+        // A discard that lost the race to apply says so instead of marking an applied plan discarded.
+        mvc.perform(auth(post(base + "/previews/" + id + "/discard"), who)).andExpect(status().isConflict());
 
         String ev = read(mvc.perform(auth(get(base + "/events?limit=1"), who))
             .andExpect(jsonPath("$[0].summary").value("applied the optimizer (relaxed pace): 3 of 3 places scheduled"))
@@ -195,6 +197,47 @@ class OptimizeApiTest extends IntegrationTest {
         jdbc.update("update optimization_preview set created_at = now() - interval '16 minutes' where id = ?::uuid", id);
         mvc.perform(auth(get(base + "/previews/" + id), who)).andExpect(jsonPath("$.status").value("FAILED"))
             .andExpect(jsonPath("$.error").value("The optimizer didn't answer. Try again."));
+    }
+
+    @Test
+    void undoingAPlanNeverRestoresPlacesOntoDaysThatAreGone() throws Exception {
+        String id = request("{\"mode\":\"BALANCED\",\"scope\":\"TRIP\"}");
+        takeJob(id);
+        answer(plan(id));
+        awaitStatus(id, "READY");
+        mvc.perform(auth(post(base + "/previews/" + id + "/apply"), who)).andExpect(status().isNoContent());
+        String ev = read(mvc.perform(auth(get(base + "/events?limit=1"), who)).andReturn(), "$[0].id");
+        // As if the plan had moved a stop off a day the trip no longer has.
+        jdbc.update("update trip_event set before = replace(before, '\"dayIndex\":0', '\"dayIndex\":9') where id = ?", Long.parseLong(ev));
+        mvc.perform(auth(post(base + "/events/" + ev + "/undo"), who)).andExpect(status().isConflict());
+    }
+
+    @Autowired
+    OptimizationPreviewRepository previews;
+    @Autowired
+    org.springframework.transaction.support.TransactionTemplate tx;
+
+    @Test
+    void aResultThatLosesToADiscardIsRolledBack() throws Exception {
+        String id = request("{\"mode\":\"BALANCED\",\"scope\":\"TRIP\"}");
+        takeJob(id);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> tx.executeWithoutResult(s -> {
+            OptimizationPreview p = previews.findById(UUID.fromString(id)).orElseThrow(); // the worker's view: PENDING
+            Thread discard = Thread.ofVirtual().start(() -> {
+                try {
+                    mvc.perform(auth(post(base + "/previews/" + id + "/discard"), who)).andExpect(status().isNoContent());
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                }
+            });
+            try {
+                discard.join();
+            } catch (InterruptedException e) {
+                throw new IllegalStateException(e);
+            }
+            p.complete(OptimizationPreview.Status.READY, "{}", null);
+        })).isInstanceOf(org.springframework.orm.ObjectOptimisticLockingFailureException.class);
+        mvc.perform(auth(get(base + "/previews/" + id), who)).andExpect(jsonPath("$.status").value("DISCARDED"));
     }
 
     @Test

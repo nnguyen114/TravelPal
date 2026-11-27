@@ -207,7 +207,12 @@ public class DestinationService {
                         throw new ResponseStatusException(HttpStatus.CONFLICT, "Places changed since; undo would overwrite newer edits");
                     }
                 }
-                for (Placement p : history.read(e.getBefore(), PlanState.class).placements()) {
+                List<Placement> before = history.read(e.getBefore(), PlanState.class).placements();
+                int days = trips.dayCount(tripId);
+                if (before.stream().anyMatch(p -> p.dayIndex() != null && p.dayIndex() >= days)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "The trip's dates changed since; undo would use days that are gone");
+                }
+                for (Placement p : before) {
                     now.get(p.id()).scheduleAt(p.dayIndex(), p.position(), p.startTime());
                 }
             }

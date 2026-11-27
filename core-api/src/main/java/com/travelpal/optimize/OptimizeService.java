@@ -109,7 +109,10 @@ public class OptimizeService {
         }
     }
 
-    /** Results are idempotent: duplicates or late answers for settled previews are ignored. */
+    /**
+     * Results are idempotent: duplicates or late answers for settled previews are ignored. A result racing a discard
+     * or expiry loses on the preview's version and rolls back with its hints; SQS then redelivers it, and it's ignored.
+     */
     @EventListener
     @Transactional
     public void onResult(OptimizeQueue.ResultReceived msg) {
@@ -135,11 +138,8 @@ public class OptimizeService {
     @Transactional
     public OptimizationPreview get(UUID userId, UUID tripId, UUID previewId) {
         access.require(tripId, userId, TripRole.VIEWER);
-        OptimizationPreview p = find(tripId, previewId);
-        if (p.getStatus() == OptimizationPreview.Status.PENDING && p.getCreatedAt().isBefore(Instant.now().minus(PENDING_DEADLINE))) {
-            p.complete(OptimizationPreview.Status.FAILED, null, "The optimizer didn't answer. Try again.");
-        }
-        return p;
+        previews.expire(previewId, tripId, "The optimizer didn't answer. Try again.", Instant.now().minus(PENDING_DEADLINE));
+        return find(tripId, previewId);
     }
 
     /** The knobs the preview was made with (mode, scope, day, places, instructions), without the trip snapshot. */
@@ -185,6 +185,9 @@ public class OptimizeService {
     public void discard(UUID userId, UUID tripId, UUID previewId) {
         access.require(tripId, userId, TripRole.EDITOR);
         OptimizationPreview p = find(tripId, previewId);
+        if (p.getStatus() == OptimizationPreview.Status.APPLIED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This preview was already applied; undo it from Activity instead");
+        }
         if (p.getStatus() == OptimizationPreview.Status.PENDING || p.getStatus() == OptimizationPreview.Status.READY) {
             p.setStatus(OptimizationPreview.Status.DISCARDED);
         }

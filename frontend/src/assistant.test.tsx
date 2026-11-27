@@ -155,6 +155,30 @@ it('says so when the reply is cut off before it finishes', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('The reply was cut off. Try again.')
 })
 
+it('keeps a draft typed while the assistant is still replying', async () => {
+  // A reply still streaming: the assistant is busy.
+  setup(() => new Response(new ReadableStream({
+    start: (c) => c.enqueue(new TextEncoder().encode('event: status\ndata: {"text":"Thinking…"}\n\n')),
+  }), { status: 200 }))
+  renderAt('/trips/t1', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
+  const box = screen.getByLabelText('Message the assistant')
+  await userEvent.type(box, 'first{Enter}')
+  expect(await screen.findByText('Thinking…')).toBeInTheDocument()
+  await userEvent.type(box, 'next question{Enter}')
+  expect(box).toHaveValue('next question')
+})
+
+it('moves focus into the drawer, closes on Escape, and hands focus back to Ask AI', async () => {
+  setup(() => sse(['done', {}]))
+  renderAt('/trips/t1', routes)
+  await userEvent.click(await screen.findByRole('button', { name: 'Ask AI' }))
+  expect(screen.getByLabelText('Message the assistant')).toHaveFocus()
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog', { name: 'AI assistant' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Ask AI' })).toHaveFocus()
+})
+
 it('shows what it is doing while it searches', async () => {
   // A stream still open mid-search: the status shows in the reply bubble until the answer arrives.
   setup(() => new Response(new ReadableStream({
@@ -187,7 +211,7 @@ it('shows assistant errors, keeps viewers read-only, and closes', async () => {
   expect(screen.getByRole('button', { name: 'Only editors can optimize' })).toBeDisabled()
   expect(screen.getByText(/Packed plan for the whole trip/)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Close assistant' }))
-  expect(screen.queryByRole('complementary', { name: 'AI assistant' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('dialog', { name: 'AI assistant' })).not.toBeInTheDocument()
 })
 
 it('surfaces HTTP failures like quota limits', async () => {
