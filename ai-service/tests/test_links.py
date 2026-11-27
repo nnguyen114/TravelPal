@@ -292,12 +292,12 @@ def test_videos_are_read_through_oembed(url, endpoint, params, monkeypatch):
 
 
 def test_tiktok_share_links_skip_the_video_page(monkeypatch):
-    answer = httpx.Response(200, json={"type": "video", "title": "Ichiran ramen at 3am"}, headers=JSON)
-    seen, routes = oembed(monkeypatch, answer, {"place": "Ichiran", "area": "Tokyo"},
+    answer = httpx.Response(200, json={"type": "video", "title": "Ichiran Shibuya ramen at 3am"}, headers=JSON)
+    seen, routes = oembed(monkeypatch, answer, {"place": "Ichiran Shibuya", "area": "Tokyo"},
                           short="https://www.tiktok.com/@ramen.fan/video/123?_r=1&_t=x")
     out = links.resolve("https://vm.tiktok.com/ZMabc/", TOKYO, client(routes))
     assert seen["pages"] == ["/ZMabc/"] and seen["oembed"] == [{"url": "https://www.tiktok.com/@ramen.fan/video/123"}]
-    assert seen["search"] == ["Ichiran"]  # "Tokyo" isn't in the caption, so it doesn't narrow the search
+    assert seen["search"] == ["Ichiran Shibuya"]  # "Tokyo" isn't in the caption, so it doesn't narrow the search
     assert out["candidates"]
 
 
@@ -482,3 +482,94 @@ def test_page_queries_reach_the_site_but_not_claude(monkeypatch):
     links.resolve("https://short.link/m?utm_source=x#top", None, client(routes))
     assert fetched == [("short.link", "/m", "utm_source=x"), ("site.example", "/menu", "id=7&sig=abc")]
     assert asked[0].startswith("<url>https://site.example/menu</url>") and "sig" not in asked[0]
+
+
+def row(name, place_id, address="Shimokitazawa, Setagaya, Tokyo", **extra):
+    return {"name": name, "lat": 35.66, "lon": 139.67, "place_id": place_id, "address_line2": address, **extra}
+
+
+NEAR_MINTEI = [row("Shimokitazawa Station", "st", category="public_transport.train"), row("Mintei Ramen Shop", "shop"),
+               row("Café Shimokitazawa", "cafe"), {"address_line1": "Mintei", "lat": 35.66, "lon": 139.67, "place_id": "addr"}]
+
+
+def inferred(monkeypatch, place, area, *answers):
+    """A page Claude reads as (place, area); Geoapify answers each query in turn. Returns the queries and result."""
+    public(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setattr(links.claude, "_json_call", lambda *a: {"place": place, "area": area})
+    queries, answers = [], list(answers)
+
+    def routes(r):
+        if r.url.host != "api.geoapify.com":
+            return httpx.Response(200, text="<title>Mintei - Shimokitazawa/Chinese | Tabelog</title>",
+                                  headers={"content-type": "text/html"})
+        queries.append(r.url.params["text"])
+        answer = answers.pop(0)
+        return answer if isinstance(answer, httpx.Response) else httpx.Response(200, json={"results": answer})
+    return queries, links.resolve("https://tabelog.com/en/tokyo/A1318/A131802/13001826/", TOKYO, client(routes))
+
+
+def test_unrelated_places_near_the_area_are_never_offered(monkeypatch):
+    queries, out = inferred(monkeypatch, "Mintei", "Shimokitazawa", NEAR_MINTEI, NEAR_MINTEI)
+    assert queries == ["Mintei Shimokitazawa", "Mintei"]
+    assert out == {"readable": True, "guess": "Mintei", "candidates": [],
+                   "message": "We think it's “Mintei” but couldn't find it on the map. Check the name."}
+
+
+def test_rejected_results_fall_through_to_the_next_query(monkeypatch):
+    queries, out = inferred(monkeypatch, "Mintei", "Shimokitazawa", NEAR_MINTEI, [row("MINTEI", "m")])
+    assert queries == ["Mintei Shimokitazawa", "Mintei"] and [p["providerId"] for p in out["candidates"]] == ["geoapify:m"]
+
+
+def test_only_matching_results_are_kept_in_provider_order(monkeypatch):
+    queries, out = inferred(monkeypatch, "Mintei", "Shimokitazawa",
+                            [NEAR_MINTEI[0], row("Mintei", "m1"), NEAR_MINTEI[1], row("Mintei Shimokitazawa", "m2")])
+    assert queries == ["Mintei Shimokitazawa"] and [p["providerId"] for p in out["candidates"]] == ["geoapify:m1", "geoapify:m2"]
+
+
+def test_place_without_an_area_is_searched_once(monkeypatch):
+    queries, out = inferred(monkeypatch, "Tokyo Tower", "", [row("Tokyo Tower", "tt", "Shibakoen, Minato, Tokyo")])
+    assert queries == ["Tokyo Tower"] and out["candidates"][0]["name"] == "Tokyo Tower"
+
+
+def test_search_outage_on_either_query_says_so(monkeypatch):
+    outage = "Place search is unavailable right now, so we couldn't find it on the map. Try again in a minute."
+    for answers in ([httpx.Response(503)], [NEAR_MINTEI, httpx.Response(503)]):
+        _, out = inferred(monkeypatch, "Mintei", "Shimokitazawa", *answers)
+        assert out == {"readable": True, "guess": "Mintei", "candidates": [], "message": outage}
+
+
+@pytest.mark.parametrize("name, address, place, area", [
+    ("CAFE MINTEI", "", "Café Mintei", ""),
+    ("Café-Mintei!", "", "cafe mintei", ""),
+    ("ｍｉｎｔｅｉ", "", "Mintei", ""),  # full-width compatibility forms
+    ("珈琲店", "", "珈琲店", ""),
+    ("がっこう", "", "がっこう", ""),
+    ("Ichiran Shibuya Branch", "", "Ichiran", "Shibuya"),
+    ("ICHIRAN Shibuya", "", "Ichiran", "Shibuya"),
+    ("一蘭 渋谷店", "", "一蘭", "渋谷"),
+    ("一蘭渋谷店", "", "一蘭", "渋谷"),
+    ("Ichiran", "Jinnan, Shibuya, Tokyo", "Ichiran", "Shibuya"),  # the bare name, with the area in its address
+    ("Ichiran Shibuya", "Jinnan, Shibuya, Tokyo", "Ichiran Shibuya", "Shibuya"),
+])
+def test_names_that_are_the_place(name, address, place, area):
+    assert links.same_place({"name": name, "address": address}, place, area)
+
+
+@pytest.mark.parametrize("name, address, place, area", [
+    ("珈琲館", "", "珈琲店", ""),  # one character apart in another script
+    ("かっこう", "", "がっこう", ""),  # marks matter outside Latin
+    ("Minte", "", "Mintei", ""),
+    ("Mintei Ramen", "", "Mintei", ""),  # extra words
+    ("Shimokitazawa Mintei Building", "", "Mintei", ""),
+    ("Min", "", "Mintei", ""),
+    ("Shimokitazawa Station", "", "Mintei", "Shimokitazawa"),
+    ("Ichiran Shinjuku", "", "Ichiran", "Shibuya"),  # a different branch
+    ("Ichiran", "Kabukicho, Shinjuku, Tokyo", "Ichiran", "Shibuya"),  # the bare name in the wrong area
+    ("Ichiran", "", "Ichiran", "Shibuya"),  # the bare name with no area evidence
+    ("Ichiran", "Shibuya, Tokyo", "Ichiran Shibuya", ""),  # a named branch can't fall back to the chain
+    ("Ichiran Shinjuku", "", "Ichiran Shibuya", "Shibuya"),
+    ("!!", "", "!!", ""),
+])
+def test_names_that_are_not_the_place(name, address, place, area):
+    assert not links.same_place({"name": name, "address": address}, place, area)

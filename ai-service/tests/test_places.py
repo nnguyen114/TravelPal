@@ -48,6 +48,16 @@ def test_failures_are_unavailable_not_empty(response, caplog):
     assert "test-key" not in caplog.text  # the key is in the URL; logs must never carry it
 
 
+def test_require_name_drops_address_only_results():
+    rows = {"results": [{"address_line1": "Mintei", "lat": 1, "lon": 2, "place_id": "a"},
+                        {"name": " ", "address_line1": "Mintei", "lat": 1, "lon": 2, "place_id": "b"},
+                        {"name": "Mintei", "lat": 1, "lon": 2, "place_id": "c"}]}
+    assert [p["providerId"] for p in places.search("mintei", http=client(lambda r: httpx.Response(200, json=rows)))] == [
+        "geoapify:a", "geoapify:b", "geoapify:c"]
+    assert [p["providerId"] for p in places.search("mintei", require_name=True,
+                                                   http=client(lambda r: httpx.Response(200, json=rows)))] == ["geoapify:c"]
+
+
 def test_no_key_means_unavailable(monkeypatch):
     monkeypatch.delenv("PLACES_API_KEY")
     with pytest.raises(places.Unavailable):

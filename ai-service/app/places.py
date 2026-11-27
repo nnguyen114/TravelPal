@@ -27,8 +27,9 @@ class Unavailable(Exception):
 
 
 def search(q: str, *, near: dict | None = None, bbox: str | None = None, category: str = "", limit: int = 10,
-           http: httpx.Client | None = None) -> list[dict]:
-    """Places matching the text, or (with a category) places of that kind in the box. bbox: "lon1,lat1,lon2,lat2"."""
+           http: httpx.Client | None = None, require_name: bool = False) -> list[dict]:
+    """Places matching the text, or (with a category) places of that kind in the box. bbox: "lon1,lat1,lon2,lat2".
+    require_name drops results the provider didn't name (an address line alone is no evidence of the place)."""
     key = os.environ.get("PLACES_API_KEY")
     if not key:
         log.error("PLACES_API_KEY is not set; place search is off")
@@ -53,7 +54,7 @@ def search(q: str, *, near: dict | None = None, bbox: str | None = None, categor
         log.warning("place search failed: %s", type(e).__name__)
         raise Unavailable from e
     rows = [f["properties"] for f in data.get("features", [])] if category else data.get("results", [])
-    return [place(r) for r in rows if r.get("name") or r.get("address_line1")]
+    return [place(r) for r in rows if (r.get("name") or "").strip() or (not require_name and r.get("address_line1"))]
 
 
 def place(r: dict) -> dict:

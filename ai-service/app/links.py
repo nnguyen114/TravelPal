@@ -39,6 +39,8 @@ PUBLISHERS = {"instagram", "facebook", "threads", "tiktok", "youtube", "yelp", "
 WALLS = {"", "log in", "login", "sign in", "sign up", "log in or sign up", "access denied", "forbidden",
          "403 forbidden", "404 not found", "not found", "page not found", "just a moment", "attention required",
          "are you a robot", "security check", "make your day"}
+# A chain branch named after its area: "Ichiran Shibuya Branch", "一蘭 渋谷店".
+BRANCH_SUFFIXES = ("", " branch", " store", "店", " 店", "支店", " 支店")
 META = re.compile(r'<meta[^>]+(?:property|name)=["\'](og:title|og:description|description)["\'][^>]+content=["\']([^"\']*)', re.IGNORECASE)
 TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
@@ -198,18 +200,34 @@ def guess(text: str, url: str = "", video: bool = False, title: str = "") -> tup
     return first[:150], ""
 
 
-def candidates(guess: str, near: dict | None, http: httpx.Client | None, *queries: str) -> dict:
-    """Map matches for a guessed place (trying each query in turn, the guess itself by default), or an honest message."""
+def candidates(guess: str, near: dict | None, http: httpx.Client | None, area: str = "", inferred: bool = False) -> dict:
+    """Map matches, or an honest message. The traveler's own Maps search is shown as the provider returns it; a
+    place we inferred from a page or video only keeps results that are that place (trying "place area", then the
+    place), because offering an unrelated place is worse than an honest miss."""
+    queries = dict.fromkeys([f"{guess} {area}" if area else guess, guess] if inferred else [guess])
     try:
         found = []
-        for q in queries or (guess,):
-            if found := places.search(q, near=near, limit=5, http=http):
+        for q in queries:
+            rows = places.search(q, near=near, limit=5, http=http, require_name=inferred)
+            if found := [p for p in rows if not inferred or same_place(p, guess, area)]:
                 break
     except places.Unavailable:
         return {"readable": True, "guess": guess, "candidates": [],
                 "message": "Place search is unavailable right now, so we couldn't find it on the map. Try again in a minute."}
     return {"readable": True, "guess": guess, "candidates": found,
             "message": None if found else f"We think it's “{guess}” but couldn't find it on the map. Check the name."}
+
+
+def same_place(found: dict, place: str, area: str) -> bool:
+    """The result's whole name is the place's name (no fuzzy or partial matches). With a known area, a chain's
+    branch also counts when named as place + area (+ branch word); the bare name then needs the area in its address."""
+    name, want, where = norm(found["name"]), norm(place), norm(area)
+    if not want:
+        return False
+    if name == want:
+        return not where or stated(area, found["address"])
+    return bool(where) and any(name == base + suffix for base in (f"{want} {where}", want + where)
+                               for suffix in BRANCH_SUFFIXES)
 
 
 def fail(message: str, readable: bool = False) -> dict:
@@ -285,7 +303,7 @@ def video(endpoint: str, near: dict | None, http: httpx.Client | None) -> dict:
     place, area = guess(title.strip()[:2000], video=True) if title.strip() else ("", "")
     if not place:
         return fail(MESSAGES["video_unclear"], readable=True)
-    return candidates(place, near, http, *([f"{place} {area}"] if area else []), place)
+    return candidates(place, near, http, area, inferred=True)
 
 
 def resolve(url: str, near: dict | None, http: httpx.Client | None = None, short: str = "") -> dict:
@@ -321,4 +339,4 @@ def resolve(url: str, near: dict | None, http: httpx.Client | None = None, short
     place, area = guess(text, f"{u.scheme}://{u.hostname}{u.path}", title=title)
     if not place:
         return fail(MESSAGES["no_place"], readable=True)
-    return candidates(place, near, http, *([f"{place} {area}"] if area else []), place)
+    return candidates(place, near, http, area, inferred=True)
